@@ -1,0 +1,53 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Syne:wght@400..800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #7C3AED;
+  --color-primary-hover: #A855F7;
+  --color-secondary: #1E1B2E;
+  --color-accent: #A855F7;
+  --color-background: #0D0B14;
+  --color-card: #16132A;
+  --color-border: #2D2950;
+  --color-text-primary: #FFFFFF;
+  --color-text-secondary: #A0A0B8;
+
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: "Syne", ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-text-primary font-sans antialiased;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading font-bold text-text-primary;
+  }
+}
+
+@layer utilities {
+  .glass-card {
+    @apply bg-card/80 backdrop-blur-md border border-border rounded-xl shadow-lg;
+  }
+  
+  .glass-panel {
+    @apply bg-secondary/80 backdrop-blur-md border border-border rounded-xl shadow-lg;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #2D2950;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #7C3AED;
+}
