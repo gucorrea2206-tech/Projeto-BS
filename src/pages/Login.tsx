@@ -96,10 +96,10 @@ export function Login() {
             <span className="font-heading font-bold text-4xl text-white">BS</span>
           </div>
           <h1 className="text-4xl font-heading font-bold text-white mb-6 leading-tight">
-            Gestão inteligente para seus lançamentos.
+            Gestão inteligente do projeto Bruno Simplício
           </h1>
           <p className="text-lg text-text-secondary">
-            Centralize funis, tarefas, equipe e financeiro em uma única plataforma potencializada por Inteligência Artificial.
+            Funis, tarefas, equipe e financeiro em uma única plataforma potencializada por inteligência artificial.
           </p>
         </div>
       </div>
