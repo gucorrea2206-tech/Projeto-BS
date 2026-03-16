@@ -111,17 +111,24 @@ export function Activities({ hideHeader = false, defaultProject }: ActivitiesPro
     setNewTask(prev => ({ ...prev, project: defaultProject || 'Geral' }));
   }, [defaultProject]);
 
-  const filteredTasks = tasks
+  const baseFilteredTasks = tasks
     .filter(task => defaultProject ? task.project === defaultProject : true)
     .filter(task => selectedUserFilter === 'all' || task.user === selectedUserFilter)
-    .filter(task => task.status !== 'done')
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  const listTasks = baseFilteredTasks.filter(task => task.status !== 'done' && task.status !== 'done_late');
 
   const toggleTaskStatus = async (taskId: number) => {
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
 
-    const newStatus = task.status === 'done' ? 'todo' : 'done';
+    let newStatus = 'todo';
+    if (task.status !== 'done' && task.status !== 'done_late') {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const taskDate = new Date(task.date + 'T00:00:00');
+      newStatus = taskDate < today ? 'done_late' : 'done';
+    }
     
     try {
       const { error } = await supabase
@@ -141,17 +148,28 @@ export function Activities({ hideHeader = false, defaultProject }: ActivitiesPro
   };
 
   const updateTaskStatus = async (taskId: number, newStatus: string) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    let finalStatus = newStatus;
+    if (newStatus === 'done') {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const taskDate = new Date(task.date + 'T00:00:00');
+      finalStatus = taskDate < today ? 'done_late' : 'done';
+    }
+
     try {
       const { error } = await supabase
         .from('tasks')
-        .update({ status: newStatus })
+        .update({ status: finalStatus })
         .eq('id', taskId);
       
       if (error) throw error;
       
-      setTasks(tasks.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
+      setTasks(tasks.map(t => t.id === taskId ? { ...t, status: finalStatus } : t));
       if (selectedTask?.id === taskId) {
-        setSelectedTask({ ...selectedTask, status: newStatus });
+        setSelectedTask({ ...selectedTask, status: finalStatus });
       }
     } catch (error) {
       console.error('Error updating task status:', error);
@@ -323,19 +341,19 @@ export function Activities({ hideHeader = false, defaultProject }: ActivitiesPro
                 </tr>
               </thead>
               <tbody>
-                {filteredTasks.map((task, idx) => (
+                {listTasks.map((task, idx) => (
                   <tr 
                     key={task.id} 
                     className={cn(
                       "border-b border-border/50 hover:bg-card/50 transition-colors group cursor-pointer",
-                      idx === filteredTasks.length - 1 && "border-b-0"
+                      idx === listTasks.length - 1 && "border-b-0"
                     )}
                     onClick={() => setSelectedTask(task)}
                   >
                     <td className="p-4" onClick={(e) => e.stopPropagation()}>
                       <input 
                         type="checkbox" 
-                        checked={task.status === 'done'}
+                        checked={task.status === 'done' || task.status === 'done_late'}
                         onChange={() => toggleTaskStatus(task.id)}
                         className="rounded border-border bg-background text-primary focus:ring-primary w-4 h-4 cursor-pointer" 
                       />
@@ -349,7 +367,7 @@ export function Activities({ hideHeader = false, defaultProject }: ActivitiesPro
                         )} />
                         <span className={cn(
                           "font-medium text-sm transition-all",
-                          task.status === 'done' ? "text-text-secondary line-through" : "text-white"
+                          (task.status === 'done' || task.status === 'done_late') ? "text-text-secondary line-through" : "text-white"
                         )}>
                           {task.title}
                         </span>
@@ -380,13 +398,13 @@ export function Activities({ hideHeader = false, defaultProject }: ActivitiesPro
                     </td>
                     <td className="p-4" onClick={(e) => e.stopPropagation()}>
                       <select 
-                        value={task.status || ''}
+                        value={task.status === 'done_late' ? 'done' : task.status || ''}
                         onChange={(e) => updateTaskStatus(task.id, e.target.value)}
                         className={cn(
                           "px-2.5 py-1 rounded-full text-xs font-medium border appearance-none cursor-pointer outline-none",
                           task.status === 'in-progress' && "bg-primary/10 text-accent border-primary/20",
                           task.status === 'todo' && "bg-secondary text-text-secondary border-border",
-                          task.status === 'done' && "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                          (task.status === 'done' || task.status === 'done_late') && "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
                         )}
                       >
                         <option value="todo" className="bg-card text-white">A fazer</option>
@@ -435,7 +453,11 @@ export function Activities({ hideHeader = false, defaultProject }: ActivitiesPro
         <div className="flex-1 flex gap-6 overflow-x-auto pb-4">
           {['A fazer', 'Em andamento', 'Concluído'].map((column, colIdx) => {
             const columnStatus = column === 'A fazer' ? 'todo' : column === 'Em andamento' ? 'in-progress' : 'done';
-            const columnTasks = filteredTasks.filter(t => t.status === columnStatus);
+            const columnTasks = baseFilteredTasks.filter(t => 
+              columnStatus === 'done' 
+                ? (t.status === 'done' || t.status === 'done_late')
+                : t.status === columnStatus
+            );
             
             return (
               <div key={colIdx} className="w-80 shrink-0 flex flex-col gap-4">
@@ -492,7 +514,7 @@ export function Activities({ hideHeader = false, defaultProject }: ActivitiesPro
                       
                       <h4 className={cn(
                         "text-sm font-medium mb-4 line-clamp-2",
-                        task.status === 'done' ? "text-text-secondary line-through" : "text-white"
+                        (task.status === 'done' || task.status === 'done_late') ? "text-text-secondary line-through" : "text-white"
                       )}>{task.title}</h4>
                       
                       <div className="flex items-center justify-between mt-auto pt-3 border-t border-border/50">
@@ -547,10 +569,9 @@ export function Activities({ hideHeader = false, defaultProject }: ActivitiesPro
               <div className="flex items-center gap-3">
                 <input 
                   type="checkbox" 
-                  checked={selectedTask.status === 'done'}
+                  checked={selectedTask.status === 'done' || selectedTask.status === 'done_late'}
                   onChange={() => {
                     toggleTaskStatus(selectedTask.id);
-                    setSelectedTask({ ...selectedTask, status: selectedTask.status === 'done' ? 'todo' : 'done' });
                   }}
                   className="rounded border-border bg-background text-primary focus:ring-primary w-5 h-5 cursor-pointer" 
                 />
@@ -586,7 +607,7 @@ export function Activities({ hideHeader = false, defaultProject }: ActivitiesPro
                   }}
                   className={cn(
                     "w-full bg-transparent text-xl font-heading font-bold focus:outline-none focus:border-b focus:border-primary pb-1 transition-all",
-                    selectedTask.status === 'done' ? "text-text-secondary line-through" : "text-white"
+                    (selectedTask.status === 'done' || selectedTask.status === 'done_late') ? "text-text-secondary line-through" : "text-white"
                   )}
                 />
               </div>
@@ -595,11 +616,9 @@ export function Activities({ hideHeader = false, defaultProject }: ActivitiesPro
                 <div className="space-y-1">
                   <span className="text-xs text-text-secondary uppercase tracking-wider font-medium">Status</span>
                   <select 
-                    value={selectedTask.status || ''}
+                    value={selectedTask.status === 'done_late' ? 'done' : selectedTask.status || ''}
                     onChange={(e) => {
-                      const newStatus = e.target.value;
-                      setSelectedTask({ ...selectedTask, status: newStatus });
-                      updateTaskStatus(selectedTask.id, newStatus);
+                      updateTaskStatus(selectedTask.id, e.target.value);
                     }}
                     className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary transition-colors"
                   >

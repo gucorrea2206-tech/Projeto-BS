@@ -36,7 +36,7 @@ export function Layout() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
   const location = useLocation();
-  const { user, signOut } = useAuth();
+  const { user, isAdmin, signOut } = useAuth();
 
   useEffect(() => {
     if (user) {
@@ -273,7 +273,7 @@ export function Layout() {
             <div className="flex items-center gap-3">
               <div className="text-right hidden lg:block">
                 <p className="text-sm font-medium text-white">{userName}</p>
-                <p className="text-xs text-text-secondary">Admin</p>
+                <p className="text-xs text-text-secondary">{isAdmin ? 'Admin' : 'Equipe'}</p>
               </div>
               <div className="h-10 w-10 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center text-primary font-bold overflow-hidden">
                 {user?.user_metadata?.avatar_url ? (

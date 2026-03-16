@@ -77,7 +77,7 @@ export function Projects() {
         
         // Calculate progress
         const projectTasks = (tasksRes.data || []).filter(t => t.project === p.name);
-        const completedTasks = projectTasks.filter(t => t.status === 'done').length;
+        const completedTasks = projectTasks.filter(t => t.status === 'done' || t.status === 'done_late').length;
         const progress = projectTasks.length > 0 ? Math.round((completedTasks / projectTasks.length) * 100) : 0;
 
         return {

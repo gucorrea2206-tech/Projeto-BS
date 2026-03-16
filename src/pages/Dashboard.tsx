@@ -160,7 +160,7 @@ export function Dashboard() {
       if (currentUserAvatar) return task.user === currentUserAvatar;
       return true; // Fallback: show all tasks if user not found in team members
     })
-    .filter(task => task.status !== 'done')
+    .filter(task => task.status !== 'done' && task.status !== 'done_late')
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   const totalRevenue = financialRecords
@@ -243,7 +243,7 @@ export function Dashboard() {
         case 'metric-revenue-roi':
           return <MetricCard key={id} title="Receita Total & ROI" value={`R$ ${totalRevenue.toLocaleString('pt-BR')}`} trend="up" trendValue={`ROI: ${roi}%`} icon={DollarSign} colorClass="text-emerald-500" onRemove={() => removeWidget(id)} isEditing={isEditing} />;
         case 'metric-overdue':
-          const overdueCount = tasks.filter(t => new Date(t.date) < new Date() && t.status !== 'done').length;
+          const overdueCount = tasks.filter(t => new Date(t.date) < new Date() && t.status !== 'done' && t.status !== 'done_late').length;
           const hasOverdue = overdueCount > 0;
           return <MetricCard key={id} title="Tarefas Atrasadas" value={overdueCount.toString()} trend="" trendValue="" icon={hasOverdue ? AlertCircle : CheckCircle} colorClass={hasOverdue ? "text-red-500" : "text-emerald-500"} onRemove={() => removeWidget(id)} isEditing={isEditing} />;
         
@@ -288,7 +288,7 @@ export function Dashboard() {
                               className="w-8 h-8 rounded-full border border-border object-cover"
                               referrerPolicy="no-referrer"
                             />
-                            <span className={cn("text-sm font-medium", task.status === 'done' ? "text-text-secondary line-through" : "text-white")}>
+                            <span className={cn("text-sm font-medium", (task.status === 'done' || task.status === 'done_late') ? "text-text-secondary line-through" : "text-white")}>
                               {task.title}
                             </span>
                           </div>
@@ -318,7 +318,7 @@ export function Dashboard() {
                               task.status === 'pending' && "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
                               task.status === 'in-progress' && "bg-primary/10 text-accent border-primary/20",
                               task.status === 'todo' && "bg-secondary text-text-secondary border-border",
-                              task.status === 'done' && "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                              (task.status === 'done' || task.status === 'done_late') && "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
                             )}
                           >
                             <option value="todo" className="bg-background text-white">A fazer</option>

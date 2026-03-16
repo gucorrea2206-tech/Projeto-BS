@@ -25,23 +25,71 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Handle unhandled promise rejections for Supabase auth errors
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      if (
+        event.reason && 
+        (event.reason.message?.includes('Refresh Token') || 
+         event.reason.message?.includes('refresh_token') ||
+         event.reason.name === 'AuthApiError')
+      ) {
+        console.warn('Caught auth error, clearing session:', event.reason);
+        event.preventDefault(); // Prevent Vite error overlay
+        supabase.auth.signOut().catch(() => {
+          // Fallback: clear local storage if signOut fails
+          const keysToRemove = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key?.startsWith('sb-') && key?.endsWith('-auth-token')) {
+              keysToRemove.push(key);
+            }
+          }
+          keysToRemove.forEach(key => localStorage.removeItem(key));
+        });
+        setSession(null);
+        setUser(null);
+        setIsAdmin(false);
+      }
+    };
+
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        console.error('Error getting session:', error);
+        if (error.message.includes('Refresh Token') || error.message.includes('refresh_token')) {
+          // Clear invalid session
+          supabase.auth.signOut().catch(console.error);
+        }
+      }
       setSession(session);
       setUser(session?.user ?? null);
       checkAdminStatus(session?.user);
+      setLoading(false);
+    }).catch(error => {
+      console.error('Unhandled error getting session:', error);
       setLoading(false);
     });
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      checkAdminStatus(session?.user);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        setSession(null);
+        setUser(null);
+        setIsAdmin(false);
+      } else {
+        setSession(session);
+        setUser(session?.user ?? null);
+        checkAdminStatus(session?.user);
+      }
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
   }, []);
 
   const checkAdminStatus = async (user: User | null | undefined) => {
@@ -67,7 +115,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             name: 'Guilherme Correa',
             email: user.email,
             role: 'Administrador',
-            permission: 'admin'
+            permission: 'admin',
+            avatar: `user${Math.floor(Math.random() * 100)}`
           });
         }
       } catch (error) {
@@ -90,7 +139,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error('Error signing out:', error);
+      // Force clear session on error
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key?.startsWith('sb-') && key?.endsWith('-auth-token')) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+      setSession(null);
+      setUser(null);
+      setIsAdmin(false);
+    }
   };
 
   if (loading) {

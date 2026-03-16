@@ -63,7 +63,8 @@ export function Login() {
               name: name || email.split('@')[0],
               email: email,
               role: role,
-              permission: permission
+              permission: permission,
+              avatar: `user${Math.floor(Math.random() * 100)}`
             });
           }
           

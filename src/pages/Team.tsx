@@ -76,12 +76,16 @@ const initialTeamMembers = [
 ];
 
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 export function Team() {
+  const { user, isAdmin } = useAuth();
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [tasks, setTasks] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAddingMember, setIsAddingMember] = useState(false);
   const [activeMenuId, setActiveMenuId] = useState<number | null>(null);
+  const [selectedMemberForLateTasks, setSelectedMemberForLateTasks] = useState<any | null>(null);
 
   const [newMember, setNewMember] = useState({
     name: '',
@@ -92,23 +96,25 @@ export function Team() {
   });
 
   useEffect(() => {
-    fetchTeamMembers();
+    fetchData();
   }, []);
 
-  const fetchTeamMembers = async () => {
+  const fetchData = async () => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('team_members')
-        .select('*')
-        .order('name');
+      const [teamRes, tasksRes] = await Promise.all([
+        supabase.from('team_members').select('*').order('name'),
+        supabase.from('tasks').select('*')
+      ]);
       
-      if (error) throw error;
-      setTeamMembers(data || []);
-      // Sync with localStorage for components that still use it
-      localStorage.setItem('team-members', JSON.stringify(data || []));
+      if (teamRes.error) throw teamRes.error;
+      if (tasksRes.error) throw tasksRes.error;
+
+      setTeamMembers(teamRes.data || []);
+      setTasks(tasksRes.data || []);
+      localStorage.setItem('team-members', JSON.stringify(teamRes.data || []));
     } catch (error) {
-      console.error('Error fetching team members:', error);
+      console.error('Error fetching data:', error);
     } finally {
       setIsLoading(false);
     }
@@ -140,6 +146,31 @@ export function Team() {
     }
   };
 
+  const handleResetScore = async (memberAvatar: string) => {
+    if (!window.confirm('Tem certeza que deseja zerar a pontuação deste membro?')) return;
+
+    const lateTasks = tasks.filter(t => t.user === memberAvatar && t.status === 'done_late');
+    
+    try {
+      // Update all late tasks to 'done'
+      for (const task of lateTasks) {
+        await supabase.from('tasks').update({ status: 'done' }).eq('id', task.id);
+      }
+      
+      // Update local state
+      setTasks(tasks.map(t => 
+        (t.user === memberAvatar && t.status === 'done_late') 
+          ? { ...t, status: 'done' } 
+          : t
+      ));
+      
+      setSelectedMemberForLateTasks(null);
+    } catch (error) {
+      console.error('Error resetting score:', error);
+      alert('Erro ao zerar a pontuação.');
+    }
+  };
+
   const handleRemoveMember = async (id: number) => {
     if (!window.confirm('Tem certeza que deseja remover este membro?')) return;
 
@@ -168,13 +199,15 @@ export function Team() {
           <h1 className="text-2xl font-heading font-bold text-white">Equipe</h1>
           <p className="text-text-secondary mt-1">Gerencie os membros da sua equipe e permissões.</p>
         </div>
-        <button 
-          onClick={() => setIsAddingMember(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary-hover transition-colors text-sm font-medium"
-        >
-          <Plus size={18} />
-          Adicionar Membro
-        </button>
+        {isAdmin && (
+          <button 
+            onClick={() => setIsAddingMember(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary-hover transition-colors text-sm font-medium"
+          >
+            <Plus size={18} />
+            Adicionar Membro
+          </button>
+        )}
       </header>
 
       {/* Team Grid */}
@@ -189,12 +222,25 @@ export function Team() {
               <div className="p-6 flex flex-col gap-4">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-4">
-                    <img 
-                      src={`https://picsum.photos/seed/${member.avatar}/64/64`} 
-                      alt={member.name} 
-                      className="w-16 h-16 rounded-full border-2 border-border object-cover"
-                      referrerPolicy="no-referrer"
-                    />
+                    {member.avatar?.startsWith('http') ? (
+                      <img 
+                        src={member.avatar} 
+                        alt={member.name} 
+                        className="w-16 h-16 rounded-full border-2 border-border object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : member.avatar ? (
+                      <img 
+                        src={`https://picsum.photos/seed/${member.avatar}/64/64`} 
+                        alt={member.name} 
+                        className="w-16 h-16 rounded-full border-2 border-border object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="w-16 h-16 rounded-full border-2 border-border bg-primary/20 flex items-center justify-center text-primary font-bold text-xl">
+                        {member.name ? member.name.substring(0, 2).toUpperCase() : member.email?.substring(0, 2).toUpperCase() || 'U'}
+                      </div>
+                    )}
                     <div>
                       <h3 className="font-heading font-bold text-lg text-white group-hover:text-primary transition-colors">
                         {member.name}
@@ -204,29 +250,43 @@ export function Team() {
                       </p>
                     </div>
                   </div>
-                  <div className="relative">
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setActiveMenuId(activeMenuId === member.id ? null : member.id);
-                      }}
-                      className="text-text-secondary hover:text-white transition-colors p-1"
-                    >
-                      <MoreVertical size={18} />
-                    </button>
-                    
-                    {activeMenuId === member.id && (
-                      <div className="absolute right-0 top-full mt-1 w-48 bg-card border border-border rounded-lg shadow-xl z-10 overflow-hidden">
+                  <div className="flex items-center gap-3">
+                    {tasks.filter(t => t.user === member.avatar && t.status === 'done_late').length > 0 && (
+                      <button 
+                        onClick={() => setSelectedMemberForLateTasks(member)}
+                        className="flex items-center gap-1.5 px-2 py-1 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 rounded-lg transition-colors border border-yellow-500/20"
+                        title="Atividades entregues com atraso"
+                      >
+                        <span className="text-lg">🍺</span>
+                        <span className="font-bold">{tasks.filter(t => t.user === member.avatar && t.status === 'done_late').length * 2}</span>
+                      </button>
+                    )}
+                    {isAdmin && (
+                      <div className="relative">
                         <button 
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleRemoveMember(member.id);
+                            setActiveMenuId(activeMenuId === member.id ? null : member.id);
                           }}
-                          className="w-full flex items-center gap-2 px-4 py-3 text-sm text-red-500 hover:bg-red-500/10 transition-colors text-left"
+                          className="text-text-secondary hover:text-white transition-colors p-1"
                         >
-                          <Trash2 size={16} />
-                          Remover Membro
+                          <MoreVertical size={18} />
                         </button>
+                      
+                      {activeMenuId === member.id && (
+                        <div className="absolute right-0 top-full mt-1 w-48 bg-card border border-border rounded-lg shadow-xl z-10 overflow-hidden">
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveMember(member.id);
+                            }}
+                            className="w-full flex items-center gap-2 px-4 py-3 text-sm text-red-500 hover:bg-red-500/10 transition-colors text-left"
+                          >
+                            <Trash2 size={16} />
+                            Remover Membro
+                          </button>
+                        </div>
+                      )}
                       </div>
                     )}
                   </div>
@@ -373,6 +433,68 @@ export function Team() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {selectedMemberForLateTasks && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-card w-full max-w-lg rounded-2xl border border-border shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between p-6 border-b border-border">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">🍺</span>
+                <div>
+                  <h2 className="text-xl font-heading font-bold text-white">
+                    Dívida de Cerveja
+                  </h2>
+                  <p className="text-sm text-text-secondary">
+                    {selectedMemberForLateTasks.name}
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setSelectedMemberForLateTasks(null)}
+                className="p-2 text-text-secondary hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1">
+              <div className="space-y-4">
+                {tasks.filter(t => t.user === selectedMemberForLateTasks.avatar && t.status === 'done_late').map(task => (
+                  <div key={task.id} className="p-4 rounded-xl border border-border bg-background/50 flex flex-col gap-2">
+                    <div className="flex items-start justify-between gap-4">
+                      <h4 className="font-medium text-white line-through opacity-70">{task.title}</h4>
+                      <span className="px-2 py-1 rounded-md bg-yellow-500/10 text-yellow-500 text-xs font-medium whitespace-nowrap">
+                        +2 pontos
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-text-secondary">
+                      <span>Projeto: {task.project}</span>
+                      <span>Venceu em: {task.date}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            <div className="p-6 border-t border-border bg-background/50 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-text-secondary">Total a pagar:</span>
+                <span className="text-lg font-bold text-yellow-500">
+                  {tasks.filter(t => t.user === selectedMemberForLateTasks.avatar && t.status === 'done_late').length * 2} cervejas
+                </span>
+              </div>
+              {isAdmin && (
+                <button 
+                  onClick={() => handleResetScore(selectedMemberForLateTasks.avatar)}
+                  className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg transition-colors border border-red-500/20 text-sm font-medium"
+                >
+                  Zerar Pontuação
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
