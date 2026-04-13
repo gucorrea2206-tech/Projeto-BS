@@ -23,50 +23,51 @@ function RootWrapper({ children }: { children: React.ReactNode }) {
   const { user, isActive, isLoading, signOut } = useAuth();
   const location = useLocation();
   
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
-  
-  if (!user) {
-    if (location.pathname === '/login') return <>{children}</>;
-    return <Navigate to="/login" replace />;
-  }
+  // Always render the children (Routes) but overlay the loading/waiting screens
+  // This keeps the DOM tree stable and prevents 'removeChild' errors
+  return (
+    <div className="relative min-h-screen">
+      {children}
+      
+      {isLoading && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-background">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        </div>
+      )}
+      
+      {!isLoading && !user && location.pathname !== '/login' && (
+        <Navigate to="/login" replace />
+      )}
 
-  if (!isActive && location.pathname !== '/login') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <div className="glass-card max-w-md w-full p-8 text-center space-y-6">
-          <div className="w-20 h-20 bg-yellow-500/10 text-yellow-500 rounded-full flex items-center justify-center mx-auto">
-            <Clock size={40} />
-          </div>
-          <div className="space-y-2">
-            <h1 className="text-2xl font-heading font-bold text-white">Aguardando Aprovação</h1>
-            <p className="text-text-secondary">
-              Sua conta foi criada com sucesso, mas ainda precisa ser autorizada por um administrador para acessar o sistema.
+      {!isLoading && user && !isActive && location.pathname !== '/login' && (
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-background p-4">
+          <div className="glass-card max-w-md w-full p-8 text-center space-y-6">
+            <div className="w-20 h-20 bg-yellow-500/10 text-yellow-500 rounded-full flex items-center justify-center mx-auto">
+              <Clock size={40} />
+            </div>
+            <div className="space-y-2">
+              <h1 className="text-2xl font-heading font-bold text-white">Aguardando Aprovação</h1>
+              <p className="text-text-secondary">
+                Sua conta foi criada com sucesso, mas ainda precisa ser autorizada por um administrador para acessar o sistema.
+              </p>
+            </div>
+            <div className="pt-4">
+              <button 
+                onClick={signOut}
+                className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-lg border border-border text-white hover:bg-white/5 transition-colors font-medium"
+              >
+                <LogOut size={18} />
+                Sair da Conta
+              </button>
+            </div>
+            <p className="text-xs text-text-secondary italic">
+              Dica: Entre em contato com gu.correa98@gmail.com para agilizar sua aprovação.
             </p>
           </div>
-          <div className="pt-4">
-            <button 
-              onClick={signOut}
-              className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-lg border border-border text-white hover:bg-white/5 transition-colors font-medium"
-            >
-              <LogOut size={18} />
-              Sair da Conta
-            </button>
-          </div>
-          <p className="text-xs text-text-secondary italic">
-            Dica: Entre em contato com gu.correa98@gmail.com para agilizar sua aprovação.
-          </p>
         </div>
-      </div>
-    );
-  }
-
-  return <>{children}</>;
+      )}
+    </div>
+  );
 }
 
 export default function App() {
