@@ -26,6 +26,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isActive, setIsActive] = useState(false);
   const [loading, setLoading] = useState(true);
+  const isCreatingProfile = React.useRef(false);
 
   useEffect(() => {
     let unsubProfile: (() => void) | null = null;
@@ -71,6 +72,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const checkAdminStatus = async (firebaseUser: User) => {
+    if (isCreatingProfile.current) return;
+    isCreatingProfile.current = true;
+
     try {
       // Check if user is the specified admin
       const isDefaultAdmin = firebaseUser.email === 'gu.correa98@gmail.com' || firebaseUser.email === 'gu.correa2206@gmail.com';
@@ -133,6 +137,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (error) {
       console.warn('Error checking admin status:', error);
+    } finally {
+      isCreatingProfile.current = false;
     }
   };
 
@@ -144,14 +150,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.warn('Error signing out:', error);
     }
   };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    );
-  }
 
   return (
     <AuthContext.Provider value={{ user, isAdmin, isActive, isLoading: loading, signOut }}>
