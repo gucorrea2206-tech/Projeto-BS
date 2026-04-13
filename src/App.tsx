@@ -20,15 +20,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ShieldAlert, LogOut, Clock } from 'lucide-react';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, isActive, isLoading, signOut } = useAuth();
-  
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
+  const { user, isActive, signOut } = useAuth();
   
   if (!user) {
     return <Navigate to="/login" replace />;

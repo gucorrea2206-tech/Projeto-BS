@@ -28,13 +28,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let unsubProfile: (() => void) | null = null;
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      // Cleanup previous profile listener if it exists
+      if (unsubProfile) {
+        unsubProfile();
+        unsubProfile = null;
+      }
+
       if (firebaseUser) {
         setUser(firebaseUser);
         
         // Listen to user profile changes
         const userRef = doc(db, 'users', firebaseUser.uid);
-        const unsubProfile = onSnapshot(userRef, async (docSnap) => {
+        unsubProfile = onSnapshot(userRef, async (docSnap) => {
           if (docSnap.exists()) {
             const data = docSnap.data();
             setIsAdmin(data.role === 'admin' || firebaseUser.email === 'gu.correa98@gmail.com' || firebaseUser.email === 'gu.correa2206@gmail.com');
@@ -48,8 +56,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.error('Error listening to profile:', err);
           setLoading(false);
         });
-
-        return () => unsubProfile();
       } else {
         setUser(null);
         setIsAdmin(false);
@@ -58,7 +64,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      if (unsubProfile) unsubProfile();
+    };
   }, []);
 
   const checkAdminStatus = async (firebaseUser: User) => {
