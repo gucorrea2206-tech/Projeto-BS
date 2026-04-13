@@ -197,7 +197,7 @@ export function Team() {
   };
 
   return (
-    <div className="flex flex-col gap-8 h-full relative" onClick={() => setActiveMenuId(null)}>
+    <div className="flex flex-col gap-8 relative" onClick={() => setActiveMenuId(null)}>
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-heading font-bold text-white">Equipe</h1>

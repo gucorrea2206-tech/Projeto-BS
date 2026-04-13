@@ -338,7 +338,7 @@ export function Activities({ hideHeader = false, defaultProject }: ActivitiesPro
   };
 
   return (
-    <div className="flex flex-col gap-8 h-full relative" onClick={() => setActiveMenuId(null)}>
+    <div className="flex flex-col gap-8 relative" onClick={() => setActiveMenuId(null)}>
       {hideHeader && (
         <div className="flex justify-end">
           <button 
@@ -508,31 +508,42 @@ export function Activities({ hideHeader = false, defaultProject }: ActivitiesPro
                         </span>
                       </td>
                       <td className="p-4">
-                        {(() => {
-                          const member = teamMembers.find(m => m?.email === task.user || m?.avatar === task.user);
-                          const avatar = member?.avatar || task.user;
-                          return avatar?.startsWith('http') || avatar?.startsWith('data:') ? (
-                            <img 
-                              src={avatar} 
-                              alt="User" 
-                              title={member?.name || 'Usuário'}
-                              className="w-8 h-8 rounded-full border border-border object-cover"
-                              referrerPolicy="no-referrer"
-                            />
-                          ) : avatar ? (
-                            <img 
-                              src={`https://picsum.photos/seed/${avatar}/32/32`} 
-                              alt="User" 
-                              title={member?.name || 'Usuário'}
-                              className="w-8 h-8 rounded-full border border-border object-cover"
-                              referrerPolicy="no-referrer"
-                            />
-                          ) : (
-                            <div className="w-8 h-8 rounded-full border border-border bg-primary/20 flex items-center justify-center text-primary font-bold text-xs">
-                              U
-                            </div>
-                          );
-                        })()}
+                        <div className="flex items-center gap-2">
+                          {(() => {
+                            const member = teamMembers.find(m => m?.email === task.user || m?.avatar === task.user);
+                            const avatar = member?.avatar || task.user;
+                            const name = member?.name || task.user;
+                            
+                            return (
+                              <>
+                                {avatar?.startsWith('http') || avatar?.startsWith('data:') ? (
+                                  <img 
+                                    src={avatar} 
+                                    alt={name} 
+                                    title={name}
+                                    className="w-8 h-8 rounded-full border border-border object-cover shrink-0"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                ) : avatar ? (
+                                  <img 
+                                    src={`https://picsum.photos/seed/${avatar}/32/32`} 
+                                    alt={name} 
+                                    title={name}
+                                    className="w-8 h-8 rounded-full border border-border object-cover shrink-0"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                ) : (
+                                  <div className="w-8 h-8 rounded-full border border-border bg-primary/20 flex items-center justify-center text-primary font-bold text-xs shrink-0">
+                                    {name.substring(0, 1).toUpperCase()}
+                                  </div>
+                                )}
+                                <span className="text-xs text-text-secondary truncate max-w-[100px] hidden sm:inline">
+                                  {name}
+                                </span>
+                              </>
+                            );
+                          })()}
+                        </div>
                       </td>
                       <td className="p-4">
                         <div className="flex items-center gap-1.5 text-sm text-text-secondary whitespace-nowrap">

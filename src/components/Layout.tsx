@@ -87,7 +87,7 @@ export function Layout() {
   }
 
   const userInitials = user?.email ? user.email.substring(0, 2).toUpperCase() : 'U';
-  const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Usuário';
+  const userName = userProfile?.name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Usuário';
 
   return (
     <div className="flex h-screen overflow-hidden bg-background text-text-primary">

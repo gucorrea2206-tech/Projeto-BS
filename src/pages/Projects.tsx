@@ -244,7 +244,7 @@ export function Projects() {
     };
 
     return (
-      <div className="flex flex-col gap-8 h-full">
+      <div className="flex flex-col gap-8">
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button 
@@ -401,7 +401,7 @@ export function Projects() {
           )}
 
           {creationStep === 2 && (
-            <div className="flex-1 flex flex-col h-full">
+            <div className="flex-1 flex flex-col">
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-xl font-heading font-bold text-white">Desenhe o Funil do Projeto</h2>
                 <p className="text-sm text-text-secondary">Todo projeto precisa de um funil mapeado.</p>
@@ -665,7 +665,7 @@ export function Projects() {
   }
 
   return (
-    <div className="flex flex-col gap-8 h-full">
+    <div className="flex flex-col gap-8">
       <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-heading font-bold text-white">Projetos</h1>

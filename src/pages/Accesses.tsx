@@ -114,7 +114,7 @@ export function Accesses() {
   };
 
   return (
-    <div className="flex flex-col gap-8 h-full">
+    <div className="flex flex-col gap-8">
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-heading font-bold text-white flex items-center gap-2">
@@ -132,7 +132,7 @@ export function Accesses() {
         </button>
       </header>
 
-      <div className="glass-panel rounded-xl overflow-hidden flex-1">
+      <div className="glass-panel rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
