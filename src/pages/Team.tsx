@@ -113,8 +113,26 @@ export function Team() {
     setError(null);
 
     const unsubTeam = onSnapshot(query(collection(db, 'team_members'), orderBy('name')), (snapshot) => {
-      const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setTeamMembers(members);
+      const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+      
+      // If the current user is not in the list yet (syncing), add them as a fallback
+      let finalMembers = members;
+      if (user && !members.find((m: any) => m.email === user.email)) {
+        finalMembers = [
+          ...members,
+          {
+            id: user.uid,
+            name: user.displayName || user.email?.split('@')[0] || 'Eu',
+            email: user.email,
+            avatar: user.photoURL || `user${Math.floor(Math.random() * 100)}`,
+            role: isAdmin ? 'Administrador' : 'Colaborador',
+            permission: isAdmin ? 'admin' : 'collaborator',
+            isActive: true // Current user is logged in, so they must be active or they wouldn't see this page
+          }
+        ];
+      }
+      
+      setTeamMembers(finalMembers);
       setIsLoading(false);
     }, (err) => {
       console.error('Error fetching team members:', err);
@@ -277,7 +295,7 @@ export function Team() {
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      {isAdmin && member.id !== 'current-user' && (
+                      {isAdmin && member.id !== user?.uid && (
                         <div className="relative">
                           <button 
                             onClick={(e) => {
@@ -375,7 +393,7 @@ export function Team() {
                     </div>
                   </div>
 
-                  {isAdmin && member.isActive !== true && member.id !== 'current-user' && (
+                  {isAdmin && member.isActive !== true && member.id !== user?.uid && (
                     <div className="mt-4 pt-4 border-t border-border">
                       <button
                         onClick={(e) => {
