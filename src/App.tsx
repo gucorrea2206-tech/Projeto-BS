@@ -17,8 +17,10 @@ import { Accesses } from './pages/Accesses';
 import { Login } from './pages/Login';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
+import { ShieldAlert, LogOut, Clock } from 'lucide-react';
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, isLoading } = useAuth();
+  const { user, isActive, isLoading, signOut } = useAuth();
   
   if (isLoading) {
     return (
@@ -30,6 +32,36 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (!isActive) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <div className="glass-card max-w-md w-full p-8 text-center space-y-6">
+          <div className="w-20 h-20 bg-yellow-500/10 text-yellow-500 rounded-full flex items-center justify-center mx-auto">
+            <Clock size={40} />
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-2xl font-heading font-bold text-white">Aguardando Aprovação</h1>
+            <p className="text-text-secondary">
+              Sua conta foi criada com sucesso, mas ainda precisa ser autorizada por um administrador para acessar o sistema.
+            </p>
+          </div>
+          <div className="pt-4">
+            <button 
+              onClick={signOut}
+              className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-lg border border-border text-white hover:bg-white/5 transition-colors font-medium"
+            >
+              <LogOut size={18} />
+              Sair da Conta
+            </button>
+          </div>
+          <p className="text-xs text-text-secondary italic">
+            Dica: Entre em contato com gu.correa98@gmail.com para agilizar sua aprovação.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return <>{children}</>;

@@ -79,8 +79,13 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() && 
         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-         request.auth.token.email == "gu.correa2206@gmail.com" ||
-         request.auth.token.email == "gu.correa98@gmail.com");
+         request.auth.token.email == "gu.correa98@gmail.com" ||
+         request.auth.token.email == "gu.correa2206@gmail.com");
+    }
+
+    function isActive() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isActive == true || isAdmin());
     }
 
     function isValidEmail(email) {
@@ -97,33 +102,35 @@ service cloud.firestore {
     }
 
     match /projects/{projectId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated(); // For prototype, allowing all auth users. In production, restrict to admin/owner.
+      allow read: if isActive();
+      allow write: if isActive();
     }
 
     match /tasks/{taskId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow read: if isActive();
+      allow write: if isActive();
     }
 
     match /team_members/{memberId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow read: if isActive();
+      allow create: if isAuthenticated() && isOwner(memberId);
+      allow update: if isAdmin() || (isOwner(memberId) && isActive());
+      allow delete: if isAdmin();
     }
 
     match /financial_records/{recordId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow read: if isActive();
+      allow write: if isActive();
     }
 
     match /accesses/{accessId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow read: if isActive();
+      allow write: if isActive();
     }
 
     match /notifications/{notificationId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow read: if isActive();
+      allow write: if isActive();
     }
   }
 }

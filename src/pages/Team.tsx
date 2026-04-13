@@ -8,6 +8,7 @@ import {
   addDoc, 
   deleteDoc, 
   doc, 
+  updateDoc,
   serverTimestamp 
 } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
@@ -185,6 +186,20 @@ export function Team() {
     }
   };
 
+  const handleToggleActive = async (memberId: string, currentStatus: boolean) => {
+    try {
+      const memberRef = doc(db, 'team_members', memberId);
+      const userRef = doc(db, 'users', memberId);
+      
+      await updateDoc(memberRef, { isActive: !currentStatus });
+      await updateDoc(userRef, { isActive: !currentStatus });
+    } catch (error) {
+      console.error('Error toggling member status:', error);
+    } finally {
+      setActiveMenuId(null);
+    }
+  };
+
   const handleRemoveMember = async (id: any) => {
     try {
       await deleteDoc(doc(db, 'team_members', id));
@@ -290,6 +305,18 @@ export function Team() {
                         
                         {activeMenuId === member.id && (
                           <div className="absolute right-0 top-full mt-1 w-48 bg-card border border-border rounded-lg shadow-xl z-10 overflow-hidden">
+                            {member.isActive === false && (
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleActive(member.id, false);
+                                }}
+                                className="w-full flex items-center gap-2 px-4 py-3 text-sm text-emerald-500 hover:bg-emerald-500/10 transition-colors text-left border-b border-border"
+                              >
+                                <Check size={16} />
+                                Aprovar Membro
+                              </button>
+                            )}
                             <button 
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -321,6 +348,11 @@ export function Team() {
                       {member.permission === 'manager' && 'Gestor'}
                       {(member.permission === 'collaborator' || !member.permission) && 'Colaborador'}
                     </span>
+                    {member.isActive === false && (
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 uppercase tracking-wider">
+                        Pendente
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex flex-col gap-2 text-sm text-text-secondary mt-4 pt-4 border-t border-border">

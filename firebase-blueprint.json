@@ -42,6 +42,7 @@
         "phone": { "type": "string" },
         "permission": { "type": "string", "enum": ["admin", "collaborator", "viewer"] },
         "avatar": { "type": "string" },
+        "isActive": { "type": "boolean", "description": "Whether the member is authorized to access the system" },
         "created_at": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "email"]
@@ -72,7 +73,8 @@
         "email": { "type": "string" },
         "avatar": { "type": "string" },
         "role": { "type": "string" },
-        "isAdmin": { "type": "boolean" }
+        "isAdmin": { "type": "boolean" },
+        "isActive": { "type": "boolean" }
       },
       "required": ["uid", "email"]
     }

@@ -6,6 +6,7 @@ import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 interface AuthContextType {
   user: User | null;
   isAdmin: boolean;
+  isActive: boolean;
   isLoading: boolean;
   signOut: () => Promise<void>;
 }
@@ -13,6 +14,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   isAdmin: false,
+  isActive: false,
   isLoading: true,
   signOut: async () => {},
 });
@@ -22,6 +24,7 @@ export const useAuth = () => useContext(AuthContext);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isActive, setIsActive] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -31,6 +34,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await checkAdminStatus(firebaseUser);
       } else {
         setIsAdmin(false);
+        setIsActive(false);
       }
       setLoading(false);
     });
@@ -48,8 +52,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const userSnap = await getDoc(userRef);
       
       let userRole = 'collaborator';
+      let userActive = isDefaultAdmin;
+
       if (userSnap.exists()) {
-        userRole = userSnap.data().role || 'collaborator';
+        const data = userSnap.data();
+        userRole = data.role || 'collaborator';
+        userActive = data.isActive ?? isDefaultAdmin;
       } else {
         userRole = isDefaultAdmin ? 'admin' : 'collaborator';
         await setDoc(userRef, {
@@ -58,11 +66,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email: firebaseUser.email,
           avatar: firebaseUser.photoURL || '',
           role: userRole,
-          isAdmin: userRole === 'admin'
+          isAdmin: userRole === 'admin',
+          isActive: userActive
         });
       }
 
       setIsAdmin(userRole === 'admin' || isDefaultAdmin);
+      setIsActive(userActive);
 
       // Sync with team_members collection
       const teamMemberRef = doc(db, 'team_members', firebaseUser.uid);
@@ -75,13 +85,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           role: userRole === 'admin' ? 'Administrador' : 'Colaborador',
           permission: userRole === 'admin' ? 'admin' : 'collaborator',
           avatar: firebaseUser.photoURL || '',
+          isActive: userActive,
           created_at: new Date().toISOString()
         });
       } else {
         const updates: any = {};
-        if (isDefaultAdmin && teamMemberSnap.data().permission !== 'admin') {
+        const data = teamMemberSnap.data();
+        if (isDefaultAdmin && data.permission !== 'admin') {
           updates.permission = 'admin';
           updates.role = 'Administrador';
+          updates.isActive = true;
+        }
+        if (!data.name) {
+          updates.name = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Novo Membro';
         }
         if (Object.keys(updates).length > 0) {
           await updateDoc(teamMemberRef, updates);
@@ -110,7 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, isAdmin, isLoading: loading, signOut }}>
+    <AuthContext.Provider value={{ user, isAdmin, isActive, isLoading: loading, signOut }}>
       {children}
     </AuthContext.Provider>
   );
