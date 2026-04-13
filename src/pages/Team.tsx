@@ -388,6 +388,21 @@ export function Team() {
                       )}
                     </div>
                   </div>
+
+                  {isAdmin && member.isActive === false && (
+                    <div className="mt-4 pt-4 border-t border-border">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleActive(member.id, false);
+                        }}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 transition-colors font-bold text-sm shadow-lg shadow-emerald-500/20"
+                      >
+                        <Check size={18} />
+                        Ativar Conta
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
               );
