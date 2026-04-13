@@ -114,21 +114,7 @@ export function Team() {
 
     const unsubTeam = onSnapshot(query(collection(db, 'team_members'), orderBy('name')), (snapshot) => {
       const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      let updatedMembers: any[] = members;
-      if (user && !updatedMembers.find(m => m.email === user.email)) {
-        updatedMembers = [
-          ...updatedMembers,
-          {
-            id: 'current-user',
-            name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Eu',
-            email: user.email,
-            avatar: user.user_metadata?.avatar_url || `user${Math.floor(Math.random() * 100)}`,
-            role: isAdmin ? 'Administrador' : 'Colaborador',
-            permission: isAdmin ? 'admin' : 'collaborator'
-          }
-        ];
-      }
-      setTeamMembers(updatedMembers.filter(Boolean));
+      setTeamMembers(members);
       setIsLoading(false);
     }, (err) => {
       console.error('Error fetching team members:', err);

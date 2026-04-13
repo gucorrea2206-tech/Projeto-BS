@@ -73,6 +73,7 @@ export function Login() {
 
           const isDefaultAdmin = email === 'gu.correa98@gmail.com' || email === 'gu.correa2206@gmail.com';
           const role = isDefaultAdmin ? 'admin' : 'collaborator';
+          const isActive = isDefaultAdmin;
           
           // Create user profile
           await setDoc(doc(db, 'users', firebaseUser.uid), {
@@ -81,7 +82,8 @@ export function Login() {
             email: email,
             avatar: '',
             role: role,
-            isAdmin: role === 'admin'
+            isAdmin: role === 'admin',
+            isActive: isActive
           });
 
           // Add to team_members
@@ -91,6 +93,7 @@ export function Login() {
             role: isDefaultAdmin ? 'Administrador' : 'Colaborador',
             permission: isDefaultAdmin ? 'admin' : 'collaborator',
             avatar: '',
+            isActive: isActive,
             created_at: new Date().toISOString()
           });
           
@@ -134,13 +137,16 @@ export function Login() {
 
         if (!userSnap.exists()) {
           const role = isDefaultAdmin ? 'admin' : 'collaborator';
+          const isActive = isDefaultAdmin;
+
           await setDoc(userRef, {
             uid: firebaseUser.uid,
             name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Novo Membro',
             email: firebaseUser.email,
             avatar: firebaseUser.photoURL || '',
             role: role,
-            isAdmin: role === 'admin'
+            isAdmin: role === 'admin',
+            isActive: isActive
           });
 
           await setDoc(doc(db, 'team_members', firebaseUser.uid), {
@@ -149,6 +155,7 @@ export function Login() {
             role: role === 'admin' ? 'Administrador' : 'Colaborador',
             permission: role === 'admin' ? 'admin' : 'collaborator',
             avatar: firebaseUser.photoURL || '',
+            isActive: isActive,
             created_at: new Date().toISOString()
           });
         }
