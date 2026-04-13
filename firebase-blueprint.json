@@ -1,0 +1,102 @@
+{
+  "entities": {
+    "Project": {
+      "title": "Project",
+      "description": "A project managed in the system",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Project name" },
+        "description": { "type": "string", "description": "Project description (JSON or text)" },
+        "status": { "type": "string", "enum": ["active", "completed", "on-hold", "archived"] },
+        "progress": { "type": "number", "description": "Project progress percentage" },
+        "start_date": { "type": "string", "format": "date", "description": "Start date" },
+        "end_date": { "type": "string", "format": "date", "description": "End date" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "status"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "A task or activity",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "project": { "type": "string", "description": "Project name or ID" },
+        "date": { "type": "string", "format": "date" },
+        "priority": { "type": "string", "enum": ["low", "medium", "high"] },
+        "status": { "type": "string", "enum": ["todo", "in-progress", "done"] },
+        "user": { "type": "string", "description": "Assigned user name or ID" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "status"]
+    },
+    "TeamMember": {
+      "title": "Team Member",
+      "description": "A member of the team",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string" },
+        "phone": { "type": "string" },
+        "permission": { "type": "string", "enum": ["admin", "collaborator", "viewer"] },
+        "avatar": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "email"]
+    },
+    "FinancialRecord": {
+      "title": "Financial Record",
+      "description": "An income or expense record",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["income", "expense"] },
+        "description": { "type": "string" },
+        "value": { "type": "number" },
+        "category": { "type": "string" },
+        "project": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "isRecurring": { "type": "boolean" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["type", "value", "date"]
+    },
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Extended user information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "avatar": { "type": "string" },
+        "role": { "type": "string" },
+        "isAdmin": { "type": "boolean" }
+      },
+      "required": ["uid", "email"]
+    }
+  },
+  "firestore": {
+    "/projects/{projectId}": {
+      "schema": "Project",
+      "description": "Collection of projects"
+    },
+    "/tasks/{taskId}": {
+      "schema": "Task",
+      "description": "Collection of tasks"
+    },
+    "/team_members/{memberId}": {
+      "schema": "TeamMember",
+      "description": "Collection of team members"
+    },
+    "/financial_records/{recordId}": {
+      "schema": "FinancialRecord",
+      "description": "Collection of financial records"
+    },
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profiles and settings"
+    }
+  }
+}

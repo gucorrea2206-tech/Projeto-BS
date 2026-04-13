@@ -1,4 +1,11 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { db } from '../lib/firebase';
+import { 
+  collection, 
+  onSnapshot, 
+  query, 
+  orderBy 
+} from 'firebase/firestore';
 import { 
   ReactFlow, 
   Background, 
@@ -29,10 +36,11 @@ import {
   PlaySquare, 
   Tag, 
   Users, 
-  ArrowUpCircle, 
-  ArrowDownCircle,
+  CircleArrowUp, 
+  CircleArrowDown,
   Settings
 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 import { cn } from '@/src/lib/utils';
 
 // Custom Node Component
@@ -130,8 +138,8 @@ const blocks = [
   { id: 'replay', label: 'Replay', icon: PlaySquare, color: 'orange' },
   { id: 'offer', label: 'Oferta', icon: Tag, color: 'red' },
   { id: 'community', label: 'Comunidade', icon: Users, color: 'primary' },
-  { id: 'upsell', label: 'Upsell', icon: ArrowUpCircle, color: 'emerald' },
-  { id: 'downsell', label: 'Downsell', icon: ArrowDownCircle, color: 'red' },
+  { id: 'upsell', label: 'Upsell', icon: CircleArrowUp, color: 'emerald' },
+  { id: 'downsell', label: 'Downsell', icon: CircleArrowDown, color: 'red' },
 ];
 
 interface FunnelsProps {
@@ -143,11 +151,49 @@ interface FunnelsProps {
 }
 
 export function FunnelsContent({ hideHeader = false, readOnly = false, initialNodes = defaultNodes, initialEdges = defaultEdges, onChange }: FunnelsProps) {
+  const { user, isAdmin } = useAuth();
   const [nodes, setNodes] = useState<Node[]>(initialNodes);
   const [edges, setEdges] = useState<Edge[]>(initialEdges);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [isPublished, setIsPublished] = useState(false);
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const { screenToFlowPosition } = useReactFlow();
+
+  useEffect(() => {
+    if (!user) return;
+
+    const unsubscribe = onSnapshot(query(collection(db, 'team_members'), orderBy('name')), (snapshot) => {
+      const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      let updatedMembers: any[] = members;
+      
+      if (user && !updatedMembers.find(m => m.email === user.email)) {
+        updatedMembers = [
+          ...updatedMembers,
+          {
+            id: 'current-user',
+            name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Eu',
+            email: user.email,
+            avatar: user.user_metadata?.avatar_url || `user${Math.floor(Math.random() * 100)}`,
+            role: isAdmin ? 'Administrador' : 'Colaborador'
+          }
+        ];
+      }
+      setTeamMembers(updatedMembers);
+    }, (error) => {
+      console.error('Error fetching team members:', error);
+      if (user) {
+        setTeamMembers([{
+          id: 'current-user',
+          name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Eu',
+          email: user.email,
+          avatar: user.user_metadata?.avatar_url || `user${Math.floor(Math.random() * 100)}`,
+          role: isAdmin ? 'Administrador' : 'Colaborador'
+        }]);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [user, isAdmin]);
 
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -393,10 +439,18 @@ export function FunnelsContent({ hideHeader = false, readOnly = false, initialNo
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-medium text-text-secondary uppercase tracking-wider">Responsável</label>
-                    <select className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary transition-colors">
-                      <option>Selecione um membro...</option>
-                      <option>Admin User</option>
-                      <option>Marketing Team</option>
+                    <select 
+                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary transition-colors"
+                      value={selectedNode.data.assignee || ''}
+                      onChange={(e) => {
+                        setNodes(nds => nds.map(n => n.id === selectedNode.id ? { ...n, data: { ...n.data, assignee: e.target.value } } : n));
+                        setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, assignee: e.target.value } });
+                      }}
+                    >
+                      <option value="">Selecione um membro...</option>
+                      {teamMembers.map(member => (
+                        <option key={member.id} value={member.email}>{member.name}</option>
+                      ))}
                     </select>
                   </div>
                 </div>

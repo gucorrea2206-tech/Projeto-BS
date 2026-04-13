@@ -17,9 +17,22 @@ import {
 import { cn } from '@/src/lib/utils';
 import { Funnels } from './Funnels';
 import { Activities } from './Activities';
-import { supabase } from '../lib/supabase';
+import { db } from '../lib/firebase';
+import { 
+  collection, 
+  onSnapshot, 
+  query, 
+  orderBy, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  doc, 
+  serverTimestamp 
+} from 'firebase/firestore';
+import { useAuth } from '../contexts/AuthContext';
 
 export function Projects() {
+  const { user, isAdmin } = useAuth();
   const [projectsList, setProjectsList] = useState<any[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -45,59 +58,61 @@ export function Projects() {
   });
 
   useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
+    if (!user) return;
     setIsLoading(true);
-    try {
-      const [projectsRes, tasksRes, teamRes] = await Promise.all([
-        supabase.from('projects').select('*').order('created_at', { ascending: false }),
-        supabase.from('tasks').select('*'),
-        supabase.from('team_members').select('*')
-      ]);
 
-      if (projectsRes.error) throw projectsRes.error;
-      if (tasksRes.error) throw tasksRes.error;
-      if (teamRes.error) throw teamRes.error;
-
-      setTasks(tasksRes.data || []);
-      setTeamMembers(teamRes.data || []);
+    const unsubProjects = onSnapshot(query(collection(db, 'projects'), orderBy('created_at', 'desc')), (snapshot) => {
+      const projectsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
-      const parsedProjects = (projectsRes.data || []).map(p => {
-        let parsedDesc = { text: p.description, type: 'Lançamento', recurrence: '', team: [], color: 'bg-primary' };
-        try {
-          const parsed = JSON.parse(p.description);
-          if (parsed && typeof parsed === 'object' && parsed.text !== undefined) {
+      setProjectsList(prev => {
+        const newList = projectsData.map(p => {
+          let parsedDesc = { text: '', type: 'Lançamento', recurrence: '', team: [], color: 'bg-primary' };
+          try {
+            const parsed = JSON.parse((p as any).description || '{}');
             parsedDesc = { ...parsedDesc, ...parsed };
+          } catch (e) {
+            parsedDesc.text = (p as any).description || '';
           }
-        } catch (e) {
-          // It's just a regular string
-        }
-        
-        // Calculate progress
-        const projectTasks = (tasksRes.data || []).filter(t => t.project === p.name);
-        const completedTasks = projectTasks.filter(t => t.status === 'done' || t.status === 'done_late').length;
-        const progress = projectTasks.length > 0 ? Math.round((completedTasks / projectTasks.length) * 100) : 0;
 
-        return {
-          ...p,
-          descriptionText: parsedDesc.text,
-          type: parsedDesc.type,
-          recurrence: parsedDesc.recurrence,
-          team: parsedDesc.team,
-          color: parsedDesc.color,
-          progress
-        };
+          return {
+            ...p,
+            descriptionText: parsedDesc.text,
+            type: parsedDesc.type,
+            recurrence: parsedDesc.recurrence,
+            team: parsedDesc.team,
+            color: parsedDesc.color,
+            progress: (p as any).progress || 0
+          };
+        });
+        return newList;
       });
-
-      setProjectsList(parsedProjects);
-    } catch (error) {
-      console.error('Error fetching data:', error);
-    } finally {
       setIsLoading(false);
-    }
-  };
+    });
+
+    const unsubTasks = onSnapshot(collection(db, 'tasks'), (snapshot) => {
+      setTasks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    const unsubTeam = onSnapshot(collection(db, 'team_members'), (snapshot) => {
+      setTeamMembers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    return () => {
+      unsubProjects();
+      unsubTasks();
+      unsubTeam();
+    };
+  }, [user]);
+
+  // Re-calculate progress when tasks or projects change
+  useEffect(() => {
+    setProjectsList(prev => prev.map(p => {
+      const projectTasks = tasks.filter(t => t.project === p.name);
+      const completedTasks = projectTasks.filter(t => t.status === 'done').length;
+      const progress = projectTasks.length > 0 ? Math.round((completedTasks / projectTasks.length) * 100) : 0;
+      return { ...p, progress };
+    }));
+  }, [tasks]);
 
   const filteredProjects = projectsList.filter(p => {
     if (activeTab === 'all') return true;
@@ -105,93 +120,81 @@ export function Projects() {
   });
 
   const handleCreateProject = async () => {
+    const descObj = {
+      text: projectForm.description,
+      type: projectForm.type,
+      recurrence: projectForm.recurrence,
+      team: projectForm.team,
+      color: projectForm.color
+    };
+
+    const newProject = {
+      name: projectForm.name,
+      description: JSON.stringify(descObj),
+      status: projectForm.status,
+      start_date: projectForm.startDate || null,
+      end_date: projectForm.endDate || null,
+      progress: 0,
+      created_at: serverTimestamp()
+    };
+
     try {
-      const descObj = {
-        text: projectForm.description,
-        type: projectForm.type,
-        recurrence: projectForm.recurrence,
-        team: projectForm.team,
-        color: projectForm.color
-      };
-
-      const { data, error } = await supabase
-        .from('projects')
-        .insert([{
-          name: projectForm.name,
-          description: JSON.stringify(descObj),
-          status: projectForm.status,
-          start_date: projectForm.startDate || null,
-          end_date: projectForm.endDate || null,
-          progress: 0
-        }])
-        .select()
-        .single();
-
-      if (error) throw error;
-      
-      await fetchData();
+      await addDoc(collection(db, 'projects'), newProject);
       setIsCreatingProject(false);
       setCreationStep(1);
-    } catch (error) {
-      console.error('Error creating project:', error);
+    } catch (error: any) {
+      console.error('Error creating project in Firestore:', error);
+      alert(`Erro ao criar projeto: ${error.message}`);
     }
   };
 
   const handleEditProject = async () => {
     if (!selectedProject) return;
     
+    const descObj = {
+      text: projectForm.description,
+      type: projectForm.type,
+      recurrence: projectForm.recurrence,
+      team: projectForm.team,
+      color: projectForm.color
+    };
+
+    const updateData = {
+      name: projectForm.name,
+      description: JSON.stringify(descObj),
+      status: projectForm.status,
+      start_date: projectForm.startDate || null,
+      end_date: projectForm.endDate || null
+    };
+
     try {
-      const descObj = {
-        text: projectForm.description,
-        type: projectForm.type,
-        recurrence: projectForm.recurrence,
-        team: projectForm.team,
-        color: projectForm.color
-      };
-
-      const { error } = await supabase
-        .from('projects')
-        .update({
-          name: projectForm.name,
-          description: JSON.stringify(descObj),
-          status: projectForm.status,
-          start_date: projectForm.startDate || null,
-          end_date: projectForm.endDate || null
-        })
-        .eq('id', selectedProject.id);
-
-      if (error) throw error;
+      await updateDoc(doc(db, 'projects', selectedProject.id), updateData);
       
-      await fetchData();
-      
-      // Update selected project view
+      // Update selected project view locally
       setSelectedProject({
         ...selectedProject,
-        name: projectForm.name,
+        ...updateData,
         descriptionText: projectForm.description,
         type: projectForm.type,
         recurrence: projectForm.recurrence,
         team: projectForm.team,
-        color: projectForm.color,
-        status: projectForm.status,
-        start_date: projectForm.startDate,
-        end_date: projectForm.endDate
+        color: projectForm.color
       });
       
       setIsEditingProject(false);
-    } catch (error) {
-      console.error('Error updating project:', error);
+    } catch (error: any) {
+      console.error('Error updating project in Firestore:', error);
+      alert(`Erro ao atualizar projeto: ${error.message}`);
     }
   };
 
   const handleDeleteProject = async (id: string) => {
+    if (!window.confirm('Tem certeza que deseja excluir este projeto?')) return;
     try {
-      const { error } = await supabase.from('projects').delete().eq('id', id);
-      if (error) throw error;
-      setProjectsList(prev => prev.filter(p => p.id !== id));
+      await deleteDoc(doc(db, 'projects', id));
       setActiveMenuId(null);
     } catch (error) {
-      console.error('Error deleting project:', error);
+      console.error('Error deleting project from Firestore:', error);
     }
   };
 
@@ -625,7 +628,7 @@ export function Projects() {
                   <div className="flex flex-col gap-3">
                     {selectedProject.team && selectedProject.team.length > 0 ? (
                       selectedProject.team.map((memberName: string) => {
-                        const member = teamMembers.find(m => m.name === memberName);
+                        const member = teamMembers.find(m => m?.name === memberName);
                         return (
                           <div key={memberName} className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-xs font-medium text-white">

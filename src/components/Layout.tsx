@@ -13,13 +13,22 @@ import {
   X,
   LogOut,
   Bell,
-  Search
+  Search,
+  Lock
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
-
-import { AIAssistant } from '../pages/AIAssistant';
+import { db } from '../lib/firebase';
+import { 
+  collection, 
+  query, 
+  where, 
+  onSnapshot, 
+  orderBy, 
+  limit, 
+  doc, 
+  updateDoc 
+} from 'firebase/firestore';
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
@@ -27,6 +36,7 @@ const navItems = [
   { icon: CheckSquare, label: 'Atividades', path: '/activities' },
   { icon: LineChart, label: 'Financeiro', path: '/financial' },
   { icon: Users, label: 'Equipe', path: '/team' },
+  { icon: Lock, label: 'Acessos', path: '/accesses' },
   { icon: Settings, label: 'Configurações', path: '/settings' },
 ];
 
@@ -35,35 +45,37 @@ export function Layout() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [userProfile, setUserProfile] = useState<any>(null);
   const location = useLocation();
   const { user, isAdmin, signOut } = useAuth();
 
   useEffect(() => {
-    if (user) {
-      fetchNotifications();
-    }
-  }, [user]);
+    if (!user?.email) return;
 
-  const fetchNotifications = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', user?.id)
-        .order('created_at', { ascending: false })
-        .limit(5);
-      
-      if (error) throw error;
-      setNotifications(data || []);
-    } catch (error) {
-      console.error('Error fetching notifications:', error);
-    }
-  };
+    const unsubProfile = onSnapshot(query(collection(db, 'team_members'), where('email', '==', user.email)), (snapshot) => {
+      if (!snapshot.empty) {
+        setUserProfile({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() });
+      }
+    });
+
+    const unsubNotifications = onSnapshot(query(
+      collection(db, 'notifications'), 
+      where('user_id', '==', user.uid), 
+      orderBy('created_at', 'desc'), 
+      limit(5)
+    ), (snapshot) => {
+      setNotifications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    return () => {
+      unsubProfile();
+      unsubNotifications();
+    };
+  }, [user]);
 
   const markAsRead = async (id: string) => {
     try {
-      await supabase.from('notifications').update({ read: true }).eq('id', id);
-      setNotifications(notifications.map(n => n.id === id ? { ...n, read: true } : n));
+      await updateDoc(doc(db, 'notifications', id), { read: true });
     } catch (error) {
       console.error('Error marking notification as read:', error);
     }
@@ -174,8 +186,12 @@ export function Layout() {
             "flex items-center gap-3",
             isCollapsed ? "justify-center" : "justify-start"
           )}>
-            <div className="h-10 w-10 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center text-primary font-bold shrink-0">
-              {userInitials}
+            <div className="h-10 w-10 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center text-primary font-bold shrink-0 overflow-hidden">
+              {(userProfile?.avatar || user?.user_metadata?.avatar_url)?.startsWith('http') || (userProfile?.avatar || user?.user_metadata?.avatar_url)?.startsWith('data:') ? (
+                <img src={userProfile?.avatar || user?.user_metadata?.avatar_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              ) : (userProfile?.avatar || user?.user_metadata?.avatar_url) ? (
+                <img src={`https://picsum.photos/seed/${userProfile?.avatar || user?.user_metadata?.avatar_url}/64/64`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              ) : userInitials}
             </div>
             {!isCollapsed && (
               <div className="overflow-hidden flex-1">
@@ -276,8 +292,10 @@ export function Layout() {
                 <p className="text-xs text-text-secondary">{isAdmin ? 'Admin' : 'Equipe'}</p>
               </div>
               <div className="h-10 w-10 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center text-primary font-bold overflow-hidden">
-                {user?.user_metadata?.avatar_url ? (
-                  <img src={user.user_metadata.avatar_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                {(userProfile?.avatar || user?.user_metadata?.avatar_url)?.startsWith('http') || (userProfile?.avatar || user?.user_metadata?.avatar_url)?.startsWith('data:') ? (
+                  <img src={userProfile?.avatar || user?.user_metadata?.avatar_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                ) : (userProfile?.avatar || user?.user_metadata?.avatar_url) ? (
+                  <img src={`https://picsum.photos/seed/${userProfile?.avatar || user?.user_metadata?.avatar_url}/64/64`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 ) : userInitials}
               </div>
             </div>
@@ -312,9 +330,6 @@ export function Layout() {
           <Outlet />
         </div>
       </main>
-
-      {/* Floating AI Assistant */}
-      <AIAssistant />
     </div>
   );
 }

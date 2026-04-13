@@ -1,4 +1,16 @@
 import React, { useState, useEffect } from 'react';
+import { db } from '../lib/firebase';
+import { 
+  collection, 
+  onSnapshot, 
+  query, 
+  orderBy, 
+  addDoc, 
+  deleteDoc, 
+  doc, 
+  serverTimestamp 
+} from 'firebase/firestore';
+import { useAuth } from '../contexts/AuthContext';
 import { 
   Users, 
   Mail, 
@@ -10,7 +22,7 @@ import {
   X,
   Check
 } from 'lucide-react';
-import { cn } from '@/src/lib/utils';
+import { cn } from '../lib/utils';
 
 const initialTeamMembers = [
   {
@@ -75,17 +87,16 @@ const initialTeamMembers = [
   }
 ];
 
-import { supabase } from '../lib/supabase';
-import { useAuth } from '../contexts/AuthContext';
-
 export function Team() {
   const { user, isAdmin } = useAuth();
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
+  const [projects, setProjects] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [isAddingMember, setIsAddingMember] = useState(false);
   const [activeMenuId, setActiveMenuId] = useState<number | null>(null);
-  const [selectedMemberForLateTasks, setSelectedMemberForLateTasks] = useState<any | null>(null);
+  const [memberToRemove, setMemberToRemove] = useState<any | null>(null);
 
   const [newMember, setNewMember] = useState({
     name: '',
@@ -96,99 +107,92 @@ export function Team() {
   });
 
   useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
+    if (!user) return;
     setIsLoading(true);
-    try {
-      const [teamRes, tasksRes] = await Promise.all([
-        supabase.from('team_members').select('*').order('name'),
-        supabase.from('tasks').select('*')
-      ]);
-      
-      if (teamRes.error) throw teamRes.error;
-      if (tasksRes.error) throw tasksRes.error;
+    setError(null);
 
-      setTeamMembers(teamRes.data || []);
-      setTasks(tasksRes.data || []);
-      localStorage.setItem('team-members', JSON.stringify(teamRes.data || []));
-    } catch (error) {
-      console.error('Error fetching data:', error);
-    } finally {
+    const unsubTeam = onSnapshot(query(collection(db, 'team_members'), orderBy('name')), (snapshot) => {
+      const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      let updatedMembers: any[] = members;
+      if (user && !updatedMembers.find(m => m.email === user.email)) {
+        updatedMembers = [
+          ...updatedMembers,
+          {
+            id: 'current-user',
+            name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Eu',
+            email: user.email,
+            avatar: user.user_metadata?.avatar_url || `user${Math.floor(Math.random() * 100)}`,
+            role: isAdmin ? 'Administrador' : 'Colaborador',
+            permission: isAdmin ? 'admin' : 'collaborator'
+          }
+        ];
+      }
+      setTeamMembers(updatedMembers.filter(Boolean));
       setIsLoading(false);
-    }
-  };
+    }, (err) => {
+      console.error('Error fetching team members:', err);
+      setError('Erro ao carregar dados da equipe');
+      setIsLoading(false);
+    });
+
+    const unsubProjects = onSnapshot(collection(db, 'projects'), (snapshot) => {
+      const projectsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const parsedProjects = projectsData.map(p => {
+        let team: string[] = [];
+        if ((p as any).description) {
+          try {
+            const parsed = JSON.parse((p as any).description);
+            if (parsed && typeof parsed === 'object' && Array.isArray(parsed.team)) {
+              team = parsed.team;
+            }
+          } catch (e) {
+            // Not JSON
+          }
+        }
+        return { name: (p as any).name, team };
+      });
+      setProjects(parsedProjects);
+    });
+
+    const unsubTasks = onSnapshot(collection(db, 'tasks'), (snapshot) => {
+      setTasks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    return () => {
+      unsubTeam();
+      unsubProjects();
+      unsubTasks();
+    };
+  }, [user, isAdmin]);
 
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMember.name || !newMember.email) return;
 
+    const newMemberData = {
+      ...newMember,
+      avatar: `user${Math.floor(Math.random() * 100)}`,
+      created_at: serverTimestamp()
+    };
+
     try {
-      const { data, error } = await supabase
-        .from('team_members')
-        .insert({
-          ...newMember,
-          avatar: `user${Math.floor(Math.random() * 100)}`
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      setTeamMembers([data, ...teamMembers]);
-      localStorage.setItem('team-members', JSON.stringify([data, ...teamMembers]));
+      await addDoc(collection(db, 'team_members'), newMemberData);
       setIsAddingMember(false);
       setNewMember({ name: '', role: '', email: '', phone: '', permission: 'collaborator' });
-    } catch (error) {
-      console.error('Error adding member:', error);
-      alert('Erro ao adicionar membro. Verifique se o e-mail já está cadastrado.');
+    } catch (error: any) {
+      console.error('Error adding member to Firestore:', error);
+      alert('Ocorreu um erro ao adicionar o membro. Tente novamente.');
     }
   };
 
-  const handleResetScore = async (memberAvatar: string) => {
-    if (!window.confirm('Tem certeza que deseja zerar a pontuação deste membro?')) return;
-
-    const lateTasks = tasks.filter(t => t.user === memberAvatar && t.status === 'done_late');
-    
+  const handleRemoveMember = async (id: any) => {
     try {
-      // Update all late tasks to 'done'
-      for (const task of lateTasks) {
-        await supabase.from('tasks').update({ status: 'done' }).eq('id', task.id);
-      }
-      
-      // Update local state
-      setTasks(tasks.map(t => 
-        (t.user === memberAvatar && t.status === 'done_late') 
-          ? { ...t, status: 'done' } 
-          : t
-      ));
-      
-      setSelectedMemberForLateTasks(null);
+      await deleteDoc(doc(db, 'team_members', id));
     } catch (error) {
-      console.error('Error resetting score:', error);
-      alert('Erro ao zerar a pontuação.');
-    }
-  };
-
-  const handleRemoveMember = async (id: number) => {
-    if (!window.confirm('Tem certeza que deseja remover este membro?')) return;
-
-    try {
-      const { error } = await supabase
-        .from('team_members')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-
-      const updated = teamMembers.filter(m => m.id !== id);
-      setTeamMembers(updated);
-      localStorage.setItem('team-members', JSON.stringify(updated));
+      console.error('Error removing member from Firestore:', error);
+    } finally {
       setActiveMenuId(null);
-    } catch (error) {
-      console.error('Error removing member:', error);
-      alert('Erro ao remover membro.');
+      setMemberToRemove(null);
     }
   };
 
@@ -211,138 +215,159 @@ export function Team() {
       </header>
 
       {/* Team Grid */}
-      {isLoading ? (
+      {error ? (
+        <div className="flex flex-col items-center justify-center py-20 text-red-500">
+          <ShieldAlert size={48} className="mb-4 opacity-50" />
+          <p className="font-medium text-lg">Erro ao carregar equipe</p>
+          <p className="text-sm opacity-80 mt-2">{error}</p>
+        </div>
+      ) : isLoading ? (
         <div className="flex items-center justify-center py-20">
           <div className="w-10 h-10 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {teamMembers.map(member => (
-            <div key={member.id} className="glass-card flex flex-col overflow-hidden group hover:border-primary/50 transition-colors relative">
-              <div className="p-6 flex flex-col gap-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-4">
-                    {member.avatar?.startsWith('http') ? (
-                      <img 
-                        src={member.avatar} 
-                        alt={member.name} 
-                        className="w-16 h-16 rounded-full border-2 border-border object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : member.avatar ? (
-                      <img 
-                        src={`https://picsum.photos/seed/${member.avatar}/64/64`} 
-                        alt={member.name} 
-                        className="w-16 h-16 rounded-full border-2 border-border object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <div className="w-16 h-16 rounded-full border-2 border-border bg-primary/20 flex items-center justify-center text-primary font-bold text-xl">
-                        {member.name ? member.name.substring(0, 2).toUpperCase() : member.email?.substring(0, 2).toUpperCase() || 'U'}
+          {teamMembers.length === 0 && (
+            <div className="col-span-full flex flex-col items-center justify-center py-20 text-text-secondary">
+              <Users size={48} className="mb-4 opacity-20" />
+              <p>Nenhum membro encontrado.</p>
+            </div>
+          )}
+          {teamMembers.map((member, idx) => {
+            try {
+              const memberProjects = projects
+                .filter(p => p.team && Array.isArray(p.team) && p.team.includes(member.name))
+                .map(p => p.name);
+                
+              return (
+              <div key={member.id || member.email || idx} className="glass-card flex flex-col overflow-hidden group hover:border-primary/50 transition-colors relative">
+                <div className="p-6 flex flex-col gap-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-4">
+                      {typeof member.avatar === 'string' && (member.avatar.startsWith('http') || member.avatar.startsWith('data:')) ? (
+                        <img 
+                          src={member.avatar} 
+                          alt={member.name || 'User'} 
+                          className="w-16 h-16 rounded-full border-2 border-border object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : typeof member.avatar === 'string' && member.avatar && !member.avatar.includes('@') ? (
+                        <img 
+                          src={`https://picsum.photos/seed/${member.avatar}/64/64`} 
+                          alt={member.name || 'User'} 
+                          className="w-16 h-16 rounded-full border-2 border-border object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <div className="w-16 h-16 rounded-full border-2 border-border bg-primary/20 flex items-center justify-center text-primary font-bold text-xl">
+                          {member.name ? String(member.name).substring(0, 2).toUpperCase() : String(member.email || '').substring(0, 2).toUpperCase() || 'U'}
+                        </div>
+                      )}
+                      <div>
+                        <h3 className="font-heading font-bold text-lg text-white group-hover:text-primary transition-colors">
+                          {member.name || 'Usuário'}
+                        </h3>
+                        <p className="text-sm text-text-secondary">
+                          {member.role || 'Membro'}
+                        </p>
+                        <p className="text-xs text-text-secondary/70 mt-0.5">
+                          {member.email || 'Sem e-mail'}
+                        </p>
                       </div>
-                    )}
-                    <div>
-                      <h3 className="font-heading font-bold text-lg text-white group-hover:text-primary transition-colors">
-                        {member.name}
-                      </h3>
-                      <p className="text-sm text-text-secondary">
-                        {member.role}
-                      </p>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {tasks.filter(t => t.user === member.avatar && t.status === 'done_late').length > 0 && (
-                      <button 
-                        onClick={() => setSelectedMemberForLateTasks(member)}
-                        className="flex items-center gap-1.5 px-2 py-1 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 rounded-lg transition-colors border border-yellow-500/20"
-                        title="Atividades entregues com atraso"
-                      >
-                        <span className="text-lg">🍺</span>
-                        <span className="font-bold">{tasks.filter(t => t.user === member.avatar && t.status === 'done_late').length * 2}</span>
-                      </button>
-                    )}
-                    {isAdmin && (
-                      <div className="relative">
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveMenuId(activeMenuId === member.id ? null : member.id);
-                          }}
-                          className="text-text-secondary hover:text-white transition-colors p-1"
-                        >
-                          <MoreVertical size={18} />
-                        </button>
-                      
-                      {activeMenuId === member.id && (
-                        <div className="absolute right-0 top-full mt-1 w-48 bg-card border border-border rounded-lg shadow-xl z-10 overflow-hidden">
+                    <div className="flex items-center gap-3">
+                      {isAdmin && member.id !== 'current-user' && (
+                        <div className="relative">
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleRemoveMember(member.id);
+                              setActiveMenuId(activeMenuId === member.id ? null : member.id);
                             }}
-                            className="w-full flex items-center gap-2 px-4 py-3 text-sm text-red-500 hover:bg-red-500/10 transition-colors text-left"
+                            className="text-text-secondary hover:text-white transition-colors p-1"
                           >
-                            <Trash2 size={16} />
-                            Remover Membro
+                            <MoreVertical size={18} />
                           </button>
+                        
+                        {activeMenuId === member.id && (
+                          <div className="absolute right-0 top-full mt-1 w-48 bg-card border border-border rounded-lg shadow-xl z-10 overflow-hidden">
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMemberToRemove(member.id);
+                              }}
+                              className="w-full flex items-center gap-2 px-4 py-3 text-sm text-red-500 hover:bg-red-500/10 transition-colors text-left"
+                            >
+                              <Trash2 size={16} />
+                              Remover Membro
+                            </button>
+                          </div>
+                        )}
                         </div>
                       )}
-                      </div>
-                    )}
+                    </div>
                   </div>
-                </div>
 
-                <div className="flex items-center gap-2 mt-2">
-                  <span className={cn(
-                    "px-2.5 py-1 rounded-full text-xs font-medium border flex items-center gap-1.5",
-                    member.permission === 'admin' && "bg-primary/10 text-accent border-primary/20",
-                    member.permission === 'manager' && "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
-                    member.permission === 'collaborator' && "bg-secondary text-text-secondary border-border"
-                  )}>
-                    {member.permission === 'admin' && <ShieldAlert size={12} />}
-                    {member.permission === 'admin' && 'Admin'}
-                    {member.permission === 'manager' && <Check size={12} />}
-                    {member.permission === 'manager' && 'Gestor'}
-                    {member.permission === 'collaborator' && 'Colaborador'}
-                  </span>
-                </div>
-
-                <div className="flex flex-col gap-2 text-sm text-text-secondary mt-4 pt-4 border-t border-border">
-                  <div className="flex items-center gap-2">
-                    <Mail size={16} />
-                    <a href={`mailto:${member.email}`} className="hover:text-white transition-colors">
-                      {member.email}
-                    </a>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className={cn(
+                      "px-2.5 py-1 rounded-full text-xs font-medium border flex items-center gap-1.5",
+                      member.permission === 'admin' && "bg-primary/10 text-accent border-primary/20",
+                      member.permission === 'manager' && "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+                      member.permission === 'collaborator' && "bg-secondary text-text-secondary border-border",
+                      !member.permission && "bg-secondary text-text-secondary border-border"
+                    )}>
+                      {member.permission === 'admin' && <ShieldAlert size={12} />}
+                      {member.permission === 'admin' && 'Admin'}
+                      {member.permission === 'manager' && <Check size={12} />}
+                      {member.permission === 'manager' && 'Gestor'}
+                      {(member.permission === 'collaborator' || !member.permission) && 'Colaborador'}
+                    </span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Phone size={16} />
-                    <a href={`tel:${member.phone}`} className="hover:text-white transition-colors">
-                      {member.phone || 'Não informado'}
-                    </a>
-                  </div>
-                </div>
 
-                <div className="mt-4 pt-4 border-t border-border">
-                  <p className="text-xs font-medium text-text-secondary uppercase tracking-wider mb-3">
-                    Projetos ({member.projects?.length || 0})
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {member.projects?.map((project: string, idx: number) => (
-                      <span 
-                        key={idx}
-                        className="px-2 py-1 rounded-md text-xs font-medium bg-secondary text-text-secondary border border-border"
-                      >
-                        {project}
-                      </span>
-                    ))}
-                    {(!member.projects || member.projects.length === 0) && (
-                      <span className="text-xs text-text-secondary italic">Nenhum projeto</span>
-                    )}
+                  <div className="flex flex-col gap-2 text-sm text-text-secondary mt-4 pt-4 border-t border-border">
+                    <div className="flex items-center gap-2">
+                      <Mail size={16} />
+                      <a href={`mailto:${member.email}`} className="hover:text-white transition-colors">
+                        {member.email || 'Sem e-mail'}
+                      </a>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Phone size={16} />
+                      <a href={`tel:${member.phone}`} className="hover:text-white transition-colors">
+                        {member.phone || 'Não informado'}
+                      </a>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-4 border-t border-border">
+                    <p className="text-xs font-medium text-text-secondary uppercase tracking-wider mb-3">
+                      Projetos ({memberProjects.length || 0})
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {memberProjects.map((project: string, idx: number) => (
+                        <span 
+                          key={idx}
+                          className="px-2 py-1 rounded-md text-xs font-medium bg-secondary text-text-secondary border border-border"
+                        >
+                          {project}
+                        </span>
+                      ))}
+                      {memberProjects.length === 0 && (
+                        <span className="text-xs text-text-secondary italic">Nenhum projeto</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+              );
+            } catch (err) {
+              console.error('Error rendering member:', member, err);
+              return (
+                <div key={Math.random()} className="glass-card p-6 border-red-500/50">
+                  <p className="text-red-500">Erro ao carregar membro.</p>
+                </div>
+              );
+            }
+          })}
         </div>
       )}
 
@@ -437,67 +462,33 @@ export function Team() {
         </div>
       )}
 
-      {selectedMemberForLateTasks && (
+      {memberToRemove !== null && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-card w-full max-w-lg rounded-2xl border border-border shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="flex items-center justify-between p-6 border-b border-border">
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">🍺</span>
-                <div>
-                  <h2 className="text-xl font-heading font-bold text-white">
-                    Dívida de Cerveja
-                  </h2>
-                  <p className="text-sm text-text-secondary">
-                    {selectedMemberForLateTasks.name}
-                  </p>
-                </div>
-              </div>
+          <div className="bg-card w-full max-w-md rounded-2xl border border-border shadow-2xl overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-border">
+              <h2 className="text-xl font-heading font-bold text-white">Remover Membro</h2>
+            </div>
+            <div className="p-6">
+              <p className="text-text-secondary">Tem certeza que deseja remover este membro? Esta ação não pode ser desfeita.</p>
+            </div>
+            <div className="p-6 border-t border-border flex justify-end gap-3 bg-background/50">
               <button 
-                onClick={() => setSelectedMemberForLateTasks(null)}
-                className="p-2 text-text-secondary hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                onClick={() => setMemberToRemove(null)}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-text-secondary hover:text-white hover:bg-white/5 transition-colors"
               >
-                <X size={20} />
+                Cancelar
               </button>
-            </div>
-            
-            <div className="p-6 overflow-y-auto flex-1">
-              <div className="space-y-4">
-                {tasks.filter(t => t.user === selectedMemberForLateTasks.avatar && t.status === 'done_late').map(task => (
-                  <div key={task.id} className="p-4 rounded-xl border border-border bg-background/50 flex flex-col gap-2">
-                    <div className="flex items-start justify-between gap-4">
-                      <h4 className="font-medium text-white line-through opacity-70">{task.title}</h4>
-                      <span className="px-2 py-1 rounded-md bg-yellow-500/10 text-yellow-500 text-xs font-medium whitespace-nowrap">
-                        +2 pontos
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs text-text-secondary">
-                      <span>Projeto: {task.project}</span>
-                      <span>Venceu em: {task.date}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            
-            <div className="p-6 border-t border-border bg-background/50 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-text-secondary">Total a pagar:</span>
-                <span className="text-lg font-bold text-yellow-500">
-                  {tasks.filter(t => t.user === selectedMemberForLateTasks.avatar && t.status === 'done_late').length * 2} cervejas
-                </span>
-              </div>
-              {isAdmin && (
-                <button 
-                  onClick={() => handleResetScore(selectedMemberForLateTasks.avatar)}
-                  className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg transition-colors border border-red-500/20 text-sm font-medium"
-                >
-                  Zerar Pontuação
-                </button>
-              )}
+              <button 
+                onClick={() => handleRemoveMember(memberToRemove)}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-red-500 text-white hover:bg-red-600 transition-colors"
+              >
+                Remover
+              </button>
             </div>
           </div>
         </div>
       )}
+
     </div>
   );
 }

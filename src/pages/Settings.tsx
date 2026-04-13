@@ -6,7 +6,18 @@ import {
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { db, auth } from '../lib/firebase';
+import { 
+  collection, 
+  query, 
+  where, 
+  getDocs, 
+  updateDoc, 
+  doc, 
+  addDoc,
+  serverTimestamp 
+} from 'firebase/firestore';
+import { updateProfile } from 'firebase/auth';
 
 export function Settings() {
   const { user } = useAuth();
@@ -34,16 +45,13 @@ export function Settings() {
   }, [user]);
 
   const fetchProfile = async () => {
+    if (!user?.email) return;
     try {
-      const { data, error } = await supabase
-        .from('team_members')
-        .select('*')
-        .eq('email', user?.email)
-        .maybeSingle();
+      const q = query(collection(db, 'team_members'), where('email', '==', user.email));
+      const querySnapshot = await getDocs(q);
 
-      if (error) throw error;
-
-      if (data) {
+      if (!querySnapshot.empty) {
+        const data = querySnapshot.docs[0].data();
         setProfile({
           name: data.name || '',
           email: data.email || '',
@@ -75,47 +83,39 @@ export function Settings() {
   };
 
   const handleSaveProfile = async () => {
+    if (!user?.email) return;
     setIsLoading(true);
     setMessage({ text: '', type: '' });
     try {
       // Check if user exists in team_members
-      const { data: existing } = await supabase
-        .from('team_members')
-        .select('id')
-        .eq('email', user?.email)
-        .maybeSingle();
+      const q = query(collection(db, 'team_members'), where('email', '==', user.email));
+      const querySnapshot = await getDocs(q);
 
-      if (existing) {
-        const { error } = await supabase
-          .from('team_members')
-          .update({
-            name: profile.name,
-            role: profile.role,
-            phone: profile.phone,
-            avatar: profile.avatar
-          })
-          .eq('email', user?.email);
-        if (error) throw error;
+      if (!querySnapshot.empty) {
+        const memberDoc = querySnapshot.docs[0];
+        await updateDoc(doc(db, 'team_members', memberDoc.id), {
+          name: profile.name,
+          role: profile.role,
+          phone: profile.phone,
+          avatar: profile.avatar,
+          updated_at: serverTimestamp()
+        });
       } else {
-        const { error } = await supabase
-          .from('team_members')
-          .insert({
-            name: profile.name,
-            email: user?.email,
-            role: profile.role,
-            phone: profile.phone,
-            avatar: profile.avatar
-          });
-        if (error) throw error;
+        await addDoc(collection(db, 'team_members'), {
+          name: profile.name,
+          email: user.email,
+          role: profile.role,
+          phone: profile.phone,
+          avatar: profile.avatar,
+          created_at: serverTimestamp()
+        });
       }
 
       // Update auth metadata if name changed
-      if (profile.name || profile.avatar) {
-        await supabase.auth.updateUser({
-          data: { 
-            full_name: profile.name,
-            avatar_url: profile.avatar
-          }
+      if (auth.currentUser && (profile.name || profile.avatar)) {
+        await updateProfile(auth.currentUser, {
+          displayName: profile.name || auth.currentUser.displayName,
+          photoURL: profile.avatar || auth.currentUser.photoURL
         });
       }
 
@@ -182,8 +182,10 @@ export function Settings() {
                 <h3 className="text-lg font-heading font-bold text-white mb-4">Informações Pessoais</h3>
                 <div className="flex items-center gap-6 mb-6">
                   <div className="w-20 h-20 rounded-full border-2 border-border bg-primary/20 flex items-center justify-center text-primary font-bold text-2xl overflow-hidden">
-                    {profile.avatar ? (
+                    {profile.avatar?.startsWith('http') || profile.avatar?.startsWith('data:') ? (
                       <img src={profile.avatar} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    ) : profile.avatar ? (
+                      <img src={`https://picsum.photos/seed/${profile.avatar}/64/64`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                     ) : (
                       profile.name ? profile.name.substring(0, 2).toUpperCase() : user?.email?.substring(0, 2).toUpperCase()
                     )}

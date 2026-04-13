@@ -22,7 +22,17 @@ import {
   ResponsiveContainer 
 } from 'recharts';
 import { cn } from '@/src/lib/utils';
-import { supabase } from '../lib/supabase';
+import { db } from '../lib/firebase';
+import { 
+  collection, 
+  onSnapshot, 
+  query, 
+  orderBy, 
+  addDoc, 
+  deleteDoc, 
+  doc, 
+  serverTimestamp 
+} from 'firebase/firestore';
 
 function MetricCard({ title, value, trend, trendValue, icon: Icon, colorClass }: any) {
   return (
@@ -71,25 +81,15 @@ export function Financial() {
   });
 
   useEffect(() => {
-    fetchTransactions();
-  }, []);
-
-  const fetchTransactions = async () => {
-    setIsLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('financial_records')
-        .select('*')
-        .order('date', { ascending: false });
-      
-      if (error) throw error;
-      setTransactions(data || []);
-    } catch (error) {
-      console.error('Error fetching transactions:', error);
-    } finally {
+    const q = query(collection(db, 'financial_records'), orderBy('date', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setTransactions(data);
       setIsLoading(false);
-    }
-  };
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const filteredTransactions = transactions.filter(t => {
     if (dateFilter === 'all') return true;
@@ -127,18 +127,12 @@ export function Financial() {
         date: newRecord.date,
         project: newRecord.project || 'Geral',
         type: newRecord.type,
-        isRecurring: newRecord.isRecurring
+        isRecurring: newRecord.isRecurring,
+        created_at: serverTimestamp()
       };
 
-      const { data, error } = await supabase
-        .from('financial_records')
-        .insert([record])
-        .select()
-        .single();
+      await addDoc(collection(db, 'financial_records'), record);
       
-      if (error) throw error;
-
-      setTransactions([data, ...transactions]);
       setIsAddingRecord(false);
       setNewRecord({
         type: 'income',
@@ -149,25 +143,19 @@ export function Financial() {
         date: new Date().toISOString().split('T')[0],
         isRecurring: false
       });
-    } catch (error) {
-      console.error('Error adding record:', error);
+    } catch (error: any) {
+      console.error('Error adding record to Firestore:', error);
+      alert(`Erro ao adicionar registro: ${error.message}`);
     }
   };
 
   const confirmDelete = async () => {
     if (recordToDelete !== null) {
       try {
-        const { error } = await supabase
-          .from('financial_records')
-          .delete()
-          .eq('id', recordToDelete);
-        
-        if (error) throw error;
-
-        setTransactions(transactions.filter(t => t.id !== recordToDelete));
+        await deleteDoc(doc(db, 'financial_records', recordToDelete.toString()));
         setRecordToDelete(null);
       } catch (error) {
-        console.error('Error deleting record:', error);
+        console.error('Error deleting record from Firestore:', error);
       }
     }
   };

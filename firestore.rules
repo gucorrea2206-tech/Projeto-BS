@@ -1,0 +1,129 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: projects
+// Document ID: auto-generated
+// Fields:
+//   - name: string (required)
+//   - description: string
+//   - status: string (active, completed, on-hold, archived)
+//   - progress: number
+//   - start_date: string (ISO date)
+//   - end_date: string (ISO date)
+//   - created_at: timestamp
+//
+// Collection: tasks
+// Document ID: auto-generated
+// Fields:
+//   - title: string (required)
+//   - description: string
+//   - project: string
+//   - date: string (ISO date)
+//   - priority: string (low, medium, high)
+//   - status: string (todo, in-progress, done)
+//   - user: string
+//   - created_at: timestamp
+//
+// Collection: team_members
+// Document ID: auto-generated
+// Fields:
+//   - name: string (required)
+//   - email: string (required)
+//   - role: string
+//   - phone: string
+//   - permission: string (admin, collaborator, viewer)
+//   - avatar: string
+//   - created_at: timestamp
+//
+// Collection: financial_records
+// Document ID: auto-generated
+// Fields:
+//   - type: string (income, expense)
+//   - description: string
+//   - value: number
+//   - category: string
+//   - project: string
+//   - date: string (ISO date)
+//   - isRecurring: boolean
+//   - created_at: timestamp
+//
+// Collection: users
+// Document ID: userId (from Auth)
+// Fields:
+//   - uid: string
+//   - name: string
+//   - email: string
+//   - avatar: string
+//   - role: string
+//   - isAdmin: boolean
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         request.auth.token.email == "gu.correa2206@gmail.com" ||
+         request.auth.token.email == "gu.correa98@gmail.com");
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId) || isAdmin();
+    }
+
+    match /projects/{projectId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated(); // For prototype, allowing all auth users. In production, restrict to admin/owner.
+    }
+
+    match /tasks/{taskId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /team_members/{memberId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /financial_records/{recordId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /accesses/{accessId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+  }
+}

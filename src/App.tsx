@@ -12,13 +12,21 @@ import { Projects } from './pages/Projects';
 import { Activities } from './pages/Activities';
 import { Financial } from './pages/Financial';
 import { Team } from './pages/Team';
-import { AIAssistant } from './pages/AIAssistant';
 import { Settings } from './pages/Settings';
+import { Accesses } from './pages/Accesses';
 import { Login } from './pages/Login';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
+  
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
   
   if (!user) {
     return <Navigate to="/login" replace />;
@@ -44,7 +52,7 @@ export default function App() {
             <Route path="activities" element={<Activities />} />
             <Route path="financial" element={<Financial />} />
             <Route path="team" element={<Team />} />
-            <Route path="ai" element={<AIAssistant />} />
+            <Route path="accesses" element={<Accesses />} />
             <Route path="settings" element={<Settings />} />
           </Route>
         </Routes>

@@ -2,31 +2,29 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   FolderKanban, 
   DollarSign, 
-  AlertCircle, 
-  TrendingUp,
-  TrendingDown,
+  CircleAlert, 
   ArrowUpRight,
   ArrowDownRight,
-  Clock,
-  Settings,
-  Plus,
   X,
   Calendar as CalendarIcon,
   Check,
   CheckCircle,
   GripHorizontal,
-  MessageSquare
+  MessageSquare,
+  Settings,
+  Plus
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
-
-const initialTasks = [
-  { id: 1, title: 'Revisar copy da landing page', project: 'Lançamento Alpha', date: '2026-08-14', status: 'pending', user: 'user1' },
-  { id: 2, title: 'Aprovar criativos campanha 02', project: 'Evergreen Beta', date: '2026-08-14', status: 'in-progress', user: 'user2' },
-  { id: 3, title: 'Configurar pixel de conversão', project: 'Lançamento Alpha', date: '2026-08-15', status: 'todo', user: 'user3' },
-  { id: 4, title: 'Reunião de alinhamento semanal', project: 'Geral', date: '2026-08-15', status: 'done', user: 'user4' },
-];
+import { db } from '../lib/firebase';
+import { 
+  collection, 
+  query, 
+  onSnapshot, 
+  orderBy, 
+  doc, 
+  updateDoc 
+} from 'firebase/firestore';
 
 const AVAILABLE_WIDGETS = [
   { id: 'metric-projects', title: 'Projetos Ativos', type: 'metric' },
@@ -84,7 +82,7 @@ function MetricCard({ title, value, trend, trendValue, icon: Icon, colorClass = 
 }
 
 export function Dashboard() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [layout, setLayout] = useState<string[]>(() => {
     const saved = localStorage.getItem('dashboard-layout-v3');
     return saved ? JSON.parse(saved) : DEFAULT_LAYOUT;
@@ -97,71 +95,42 @@ export function Dashboard() {
   const [projects, setProjects] = useState<any[]>([]);
 
   useEffect(() => {
-    fetchTeamMembers();
-    fetchTasks();
-    fetchFinancialData();
-    fetchProjects();
-  }, []);
+    if (!user) return;
 
-  const fetchProjects = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('projects')
-        .select('*');
-      if (error) throw error;
-      setProjects(data || []);
-    } catch (error) {
-      console.error('Error fetching projects:', error);
-    }
-  };
+    // Real-time listeners
+    const unsubProjects = onSnapshot(collection(db, 'projects'), (snapshot) => {
+      setProjects(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
 
-  const fetchTasks = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('tasks')
-        .select('*')
-        .order('date', { ascending: true });
-      if (error) throw error;
-      setTasks(data || []);
-    } catch (error) {
-      console.error('Error fetching tasks:', error);
-    }
-  };
+    const unsubTasks = onSnapshot(query(collection(db, 'tasks'), orderBy('date', 'asc')), (snapshot) => {
+      const allTasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setTasks(allTasks);
+    });
 
-  const fetchFinancialData = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('financial_records')
-        .select('*');
-      if (error) throw error;
-      setFinancialRecords(data || []);
-    } catch (error) {
-      console.error('Error fetching financial data:', error);
-    }
-  };
+    const unsubFinancial = onSnapshot(collection(db, 'financial_records'), (snapshot) => {
+      setFinancialRecords(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
 
-  const fetchTeamMembers = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('team_members')
-        .select('*');
-      
-      if (error) throw error;
-      setTeamMembers(data || []);
-    } catch (error) {
-      console.error('Error fetching team members:', error);
-    }
-  };
-  
-  const currentUserAvatar = teamMembers.find(m => m.email === user?.email)?.avatar;
+    const unsubTeam = onSnapshot(collection(db, 'team_members'), (snapshot) => {
+      setTeamMembers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    return () => {
+      unsubProjects();
+      unsubTasks();
+      unsubFinancial();
+      unsubTeam();
+    };
+  }, [user]);
+
+  const currentUserAvatar = teamMembers.find(m => m?.email === user?.email)?.avatar;
 
   const filteredTasks = tasks
     .filter(task => {
-      if (currentUserAvatar) return task.user === currentUserAvatar;
-      return true; // Fallback: show all tasks if user not found in team members
+      if (user?.email) return task.user === user.email || task.user === currentUserAvatar;
+      return false;
     })
-    .filter(task => task.status !== 'done' && task.status !== 'done_late')
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    .filter(task => task.status !== 'done');
 
   const totalRevenue = financialRecords
     .filter(r => r.type === 'income')
@@ -171,7 +140,6 @@ export function Dashboard() {
     .filter(r => r.type === 'expense')
     .reduce((acc, curr) => acc + curr.value, 0);
 
-  const netProfit = totalRevenue - totalExpenses;
   const roi = totalExpenses > 0 ? ((totalRevenue - totalExpenses) / totalExpenses * 100).toFixed(0) : '0';
 
   const dragItem = useRef<number | null>(null);
@@ -214,12 +182,20 @@ export function Dashboard() {
     setShowAddWidget(false);
   };
 
-  const updateTaskStatus = (id: number, newStatus: string) => {
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, status: newStatus } : t));
+  const updateTaskStatus = async (id: string, newStatus: string) => {
+    try {
+      await updateDoc(doc(db, 'tasks', id), { status: newStatus });
+    } catch (error) {
+      console.error('Error updating task status:', error);
+    }
   };
 
-  const updateTaskDate = (id: number, newDate: string) => {
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, date: newDate } : t));
+  const updateTaskDate = async (id: string, newDate: string) => {
+    try {
+      await updateDoc(doc(db, 'tasks', id), { date: newDate });
+    } catch (error) {
+      console.error('Error updating task date:', error);
+    }
   };
 
   const renderWidget = (id: string, index: number) => {
@@ -243,9 +219,14 @@ export function Dashboard() {
         case 'metric-revenue-roi':
           return <MetricCard key={id} title="Receita Total & ROI" value={`R$ ${totalRevenue.toLocaleString('pt-BR')}`} trend="up" trendValue={`ROI: ${roi}%`} icon={DollarSign} colorClass="text-emerald-500" onRemove={() => removeWidget(id)} isEditing={isEditing} />;
         case 'metric-overdue':
-          const overdueCount = tasks.filter(t => new Date(t.date) < new Date() && t.status !== 'done' && t.status !== 'done_late').length;
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const overdueCount = tasks.filter(t => {
+            const taskDate = new Date(t.date + 'T00:00:00');
+            return taskDate < today && t.status !== 'done';
+          }).length;
           const hasOverdue = overdueCount > 0;
-          return <MetricCard key={id} title="Tarefas Atrasadas" value={overdueCount.toString()} trend="" trendValue="" icon={hasOverdue ? AlertCircle : CheckCircle} colorClass={hasOverdue ? "text-red-500" : "text-emerald-500"} onRemove={() => removeWidget(id)} isEditing={isEditing} />;
+          return <MetricCard key={id} title="Tarefas Atrasadas" value={overdueCount.toString()} trend="" trendValue="" icon={hasOverdue ? CircleAlert : CheckCircle} colorClass={hasOverdue ? "text-red-500" : "text-emerald-500"} onRemove={() => removeWidget(id)} isEditing={isEditing} />;
         
         case 'list-my-activities':
           return (
@@ -281,14 +262,32 @@ export function Dashboard() {
                       <tr key={task.id} className="border-b border-border/50 hover:bg-card/50 transition-colors">
                         <td className="py-4">
                           <div className="flex items-center gap-3">
-                            <img 
-                              src={`https://picsum.photos/seed/${task.user}/32/32`} 
-                              alt="User" 
-                              title={teamMembers.find(m => m.avatar === task.user)?.name || 'Usuário'}
-                              className="w-8 h-8 rounded-full border border-border object-cover"
-                              referrerPolicy="no-referrer"
-                            />
-                            <span className={cn("text-sm font-medium", (task.status === 'done' || task.status === 'done_late') ? "text-text-secondary line-through" : "text-white")}>
+                            {(() => {
+                              const member = teamMembers.find(m => m?.email === task.user || m?.avatar === task.user);
+                              const avatar = member?.avatar || task.user;
+                              return avatar?.startsWith('http') || avatar?.startsWith('data:') ? (
+                                <img 
+                                  src={avatar} 
+                                  alt="User" 
+                                  title={member?.name || 'Usuário'}
+                                  className="w-8 h-8 rounded-full border border-border object-cover"
+                                  referrerPolicy="no-referrer"
+                                />
+                              ) : avatar ? (
+                                <img 
+                                  src={`https://picsum.photos/seed/${avatar}/32/32`} 
+                                  alt="User" 
+                                  title={member?.name || 'Usuário'}
+                                  className="w-8 h-8 rounded-full border border-border object-cover"
+                                  referrerPolicy="no-referrer"
+                                />
+                              ) : (
+                                <div className="w-8 h-8 rounded-full border border-border bg-primary/20 flex items-center justify-center text-primary font-bold text-xs">
+                                  U
+                                </div>
+                              );
+                            })()}
+                            <span className={cn("text-sm font-medium", task.status === 'done' ? "text-text-secondary line-through" : "text-white")}>
                               {task.title}
                             </span>
                           </div>
@@ -318,7 +317,7 @@ export function Dashboard() {
                               task.status === 'pending' && "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
                               task.status === 'in-progress' && "bg-primary/10 text-accent border-primary/20",
                               task.status === 'todo' && "bg-secondary text-text-secondary border-border",
-                              (task.status === 'done' || task.status === 'done_late') && "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                              task.status === 'done' && "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
                             )}
                           >
                             <option value="todo" className="bg-background text-white">A fazer</option>
@@ -377,7 +376,6 @@ export function Dashboard() {
                 Concluir Edição
               </button>
               
-              {/* Add Widget Dropdown */}
               {showAddWidget && (
                 <div className="absolute top-full right-0 mt-2 w-64 bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden">
                   <div className="p-3 border-b border-border bg-secondary/50">
