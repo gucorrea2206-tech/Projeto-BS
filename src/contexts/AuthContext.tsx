@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 
 interface AuthContextType {
   user: User | null;
@@ -29,14 +29,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setUser(firebaseUser);
       if (firebaseUser) {
-        await checkAdminStatus(firebaseUser);
+        setUser(firebaseUser);
+        
+        // Listen to user profile changes
+        const userRef = doc(db, 'users', firebaseUser.uid);
+        const unsubProfile = onSnapshot(userRef, async (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            setIsAdmin(data.role === 'admin' || firebaseUser.email === 'gu.correa98@gmail.com' || firebaseUser.email === 'gu.correa2206@gmail.com');
+            setIsActive(data.isActive ?? (firebaseUser.email === 'gu.correa98@gmail.com' || firebaseUser.email === 'gu.correa2206@gmail.com'));
+          } else {
+            // If profile doesn't exist, run the check/create logic
+            await checkAdminStatus(firebaseUser);
+          }
+          setLoading(false);
+        }, (err) => {
+          console.error('Error listening to profile:', err);
+          setLoading(false);
+        });
+
+        return () => unsubProfile();
       } else {
+        setUser(null);
         setIsAdmin(false);
         setIsActive(false);
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return () => unsubscribe();

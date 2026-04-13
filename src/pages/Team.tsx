@@ -305,7 +305,7 @@ export function Team() {
                         
                         {activeMenuId === member.id && (
                           <div className="absolute right-0 top-full mt-1 w-48 bg-card border border-border rounded-lg shadow-xl z-10 overflow-hidden">
-                            {member.isActive === false && (
+                            {member.isActive !== true && (
                               <button 
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -348,7 +348,7 @@ export function Team() {
                       {member.permission === 'manager' && 'Gestor'}
                       {(member.permission === 'collaborator' || !member.permission) && 'Colaborador'}
                     </span>
-                    {member.isActive === false && (
+                    {member.isActive !== true && (
                       <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 uppercase tracking-wider">
                         Pendente
                       </span>
@@ -389,7 +389,7 @@ export function Team() {
                     </div>
                   </div>
 
-                  {isAdmin && member.isActive === false && (
+                  {isAdmin && member.isActive !== true && member.id !== 'current-user' && (
                     <div className="mt-4 pt-4 border-t border-border">
                       <button
                         onClick={(e) => {
