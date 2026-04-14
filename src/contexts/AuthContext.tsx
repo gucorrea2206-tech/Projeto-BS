@@ -46,8 +46,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         unsubProfile = onSnapshot(userRef, async (docSnap) => {
           if (docSnap.exists()) {
             const data = docSnap.data();
-            setIsAdmin(data.role === 'admin' || firebaseUser.email === 'gu.correa98@gmail.com' || firebaseUser.email === 'gu.correa2206@gmail.com');
-            setIsActive(data.isActive ?? (firebaseUser.email === 'gu.correa98@gmail.com' || firebaseUser.email === 'gu.correa2206@gmail.com'));
+            setIsAdmin(data.role === 'admin' || firebaseUser.email === 'gu.correa98@gmail.com');
+            setIsActive(data.isActive ?? (firebaseUser.email === 'gu.correa98@gmail.com'));
           } else {
             // If profile doesn't exist, run the check/create logic
             await checkAdminStatus(firebaseUser);
@@ -77,7 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     try {
       // Check if user is the specified admin
-      const isDefaultAdmin = firebaseUser.email === 'gu.correa98@gmail.com' || firebaseUser.email === 'gu.correa2206@gmail.com';
+      const isDefaultAdmin = firebaseUser.email === 'gu.correa98@gmail.com';
       
       // Get or create user profile in Firestore
       const userRef = doc(db, 'users', firebaseUser.uid);

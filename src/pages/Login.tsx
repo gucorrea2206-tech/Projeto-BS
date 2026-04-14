@@ -6,9 +6,7 @@ import {
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   sendPasswordResetEmail,
-  updateProfile,
-  GoogleAuthProvider,
-  signInWithPopup
+  updateProfile
 } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
@@ -71,7 +69,7 @@ export function Login() {
             displayName: name
           });
 
-          const isDefaultAdmin = email === 'gu.correa98@gmail.com' || email === 'gu.correa2206@gmail.com';
+          const isDefaultAdmin = email === 'gu.correa98@gmail.com';
           const role = isDefaultAdmin ? 'admin' : 'collaborator';
           const isActive = isDefaultAdmin;
           
@@ -102,6 +100,8 @@ export function Login() {
       }
     } catch (err: any) {
       console.error('Auth error detail:', err);
+      console.error('Error code:', err.code);
+      console.error('Error message:', err.message);
       let message = 'Ocorreu um erro ao autenticar.';
       
       if (err.code === 'auth/operation-not-allowed') {
@@ -117,53 +117,6 @@ export function Login() {
       }
       
       setError(message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleGoogleLogin = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      const firebaseUser = result.user;
-
-      if (firebaseUser) {
-        const isDefaultAdmin = firebaseUser.email === 'gu.correa98@gmail.com' || firebaseUser.email === 'gu.correa2206@gmail.com';
-        const userRef = doc(db, 'users', firebaseUser.uid);
-        const userSnap = await getDoc(userRef);
-
-        if (!userSnap.exists()) {
-          const role = isDefaultAdmin ? 'admin' : 'collaborator';
-          const isActive = isDefaultAdmin;
-
-          await setDoc(userRef, {
-            uid: firebaseUser.uid,
-            name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Novo Membro',
-            email: firebaseUser.email,
-            avatar: firebaseUser.photoURL || '',
-            role: role,
-            isAdmin: role === 'admin',
-            isActive: isActive
-          });
-
-          await setDoc(doc(db, 'team_members', firebaseUser.uid), {
-            name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Novo Membro',
-            email: firebaseUser.email,
-            role: role === 'admin' ? 'Administrador' : 'Colaborador',
-            permission: role === 'admin' ? 'admin' : 'collaborator',
-            avatar: firebaseUser.photoURL || '',
-            isActive: isActive,
-            created_at: new Date().toISOString()
-          });
-        }
-        navigate('/');
-      }
-    } catch (err: any) {
-      console.error('Google Auth error:', err);
-      setError(err.message || 'Erro ao entrar com Google.');
     } finally {
       setIsLoading(false);
     }
@@ -305,29 +258,6 @@ export function Login() {
                 </>
               )}
             </button>
-
-            {!isForgotPassword && (
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-border"></div>
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-card px-2 text-text-secondary">Ou continue com</span>
-                </div>
-              </div>
-            )}
-
-            {!isForgotPassword && (
-              <button
-                type="button"
-                onClick={handleGoogleLogin}
-                disabled={isLoading}
-                className="w-full flex items-center justify-center gap-3 py-3 rounded-xl bg-secondary border border-border text-white font-medium hover:bg-white/5 transition-all disabled:opacity-70"
-              >
-                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
-                Google
-              </button>
-            )}
           </form>
 
           <p className="text-center text-sm text-text-secondary">
