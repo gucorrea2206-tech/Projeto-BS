@@ -1,25 +1,25 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
-import firebaseConfigJson from '../../firebase-applet-config.json';
 
-// Use the configuration from the generated JSON file
+// Safe way to load the local config file if it exists without breaking the build if it's missing (e.g. on Vercel)
+// Using a wildcard (*) makes it a true glob, so Vite won't fail if the specific file is missing
+const configs = import.meta.glob('../../firebase-applet-config*.json', { eager: true });
+const configKey = Object.keys(configs).find(key => key.includes('firebase-applet-config.json'));
+const firebaseConfigJson = configKey ? (configs[configKey] as any).default : {};
+
+// This setup allows using environment variables (ideal for Vercel/Production)
+// while falling back to the local JSON config (ideal for AI Studio/Development)
 const firebaseConfig = {
-  apiKey: firebaseConfigJson.apiKey,
-  authDomain: firebaseConfigJson.authDomain,
-  projectId: firebaseConfigJson.projectId,
-  storageBucket: firebaseConfigJson.storageBucket,
-  messagingSenderId: firebaseConfigJson.messagingSenderId,
-  appId: firebaseConfigJson.appId,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || firebaseConfigJson.apiKey,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfigJson.authDomain,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseConfigJson.projectId,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfigJson.storageBucket,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseConfigJson.messagingSenderId,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || firebaseConfigJson.appId,
 };
 
-const databaseId = firebaseConfigJson.firestoreDatabaseId;
-
-console.log('Firebase Config loaded from JSON:', {
-  projectId: firebaseConfig.projectId,
-  hasApiKey: !!firebaseConfig.apiKey,
-  authDomain: firebaseConfig.authDomain
-});
+const databaseId = import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || firebaseConfigJson.firestoreDatabaseId;
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, databaseId || '(default)');
